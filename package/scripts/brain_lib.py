@@ -44,7 +44,10 @@ def resolve_brain_root() -> Path:
 
 
 def resolve_brain_dir() -> Path:
-    # Allow project-local override
+    # Sideload law: PRIVATE_BRAIN_HOME / PRIVATE_BRAIN_ROOT always win when set
+    # (hooks + CI + multi-kit). Only then allow project-local .brain override.
+    if os.environ.get("PRIVATE_BRAIN_HOME") or os.environ.get("PRIVATE_BRAIN_ROOT"):
+        return resolve_brain_root() / ".brain"
     cwd_brain = Path.cwd() / ".brain"
     if cwd_brain.is_dir() and (cwd_brain / "meta.json").exists():
         return cwd_brain.resolve()

@@ -1,0 +1,66 @@
+# Free GitHub-hosted runners: product conversation contracts (no Codex GUI required).
+# Proves cite-or-block, Stop hook, orchestrate concert, hooks install — Mac ≡ Windows ≡ Linux.
+name: Conversation E2E
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "scripts/**"
+      - "hooks/**"
+      - "package/scripts/**"
+      - "private_brain/**"
+      - "config/**"
+      - ".github/workflows/conversation-e2e.yml"
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: convo-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conversation-contracts:
+    name: convo (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Conversation E2E (cite-or-block + hooks + concert)
+        shell: bash
+        env:
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_NONINTERACTIVE: "1"
+          PB_NO_OPEN_CODEX: "1"
+          PB_GODSEYE: "0"
+          # Real Codex CLI is optional; free runners usually have no binary/auth.
+          # Set repo secret + PB_E2E_REAL_CODEX=1 later if you want a live turn.
+          PB_E2E_REAL_CODEX: "0"
+        run: |
+          set -e
+          python -m pip install -U pip >/dev/null
+          # stdlib-only core — no pygame required for conversation contracts
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
+          export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
+          python scripts/conversation_e2e.py
+
+      - name: Upload conversation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conversation-e2e-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            .brain/state/CONVERSATION_E2E.json
+            **/CONVERSATION_E2E.json
+          if-no-files-found: warn

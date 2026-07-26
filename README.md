@@ -3,6 +3,7 @@
 [![CI](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml)
 [![Windows first-boot](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml)
 [![Mac first-boot](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml)
+[![Conversation E2E](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml)
 
 **Codex sideload.** Install once. Open Codex. Talk.  
 **Goal: real results only** — not agent counts, not token theater.
@@ -294,4 +295,20 @@ This public repo uses neutral names only:
 | **Corporate Package Index** | Approved pip/index URL for optional deps |
 
 No customer-specific names appear in scripts, docs, or kit labels.
+
+---
+
+## What free runners prove
+
+GitHub Actions (ubuntu + windows + macos) abuse free hosted runners for **product contracts**, not just compile:
+
+| Claim | Workflow / test |
+|-------|-----------------|
+| **Open Codex → beast auto on** | Conversation E2E · SessionStart hook |
+| **Answers cite evidence or refuse** | Conversation E2E · citation_gate + Stop hook |
+| **`stop beast mode` session-only** | Conversation E2E · UserPromptSubmit + reopen SessionStart |
+| **GodsEye + Corporate Library soft/hard** | Conversation E2E · module + package policy |
+| **Kit first-boot (Mac/Windows)** | Mac/Windows first-boot · freeze → START → hooks.json |
+
+No Codex Desktop GUI on runners (no app install/login). Hooks + DAG are the same code path Codex calls after sideload. Optional live `codex` CLI later via `PB_E2E_REAL_CODEX=1`.
 

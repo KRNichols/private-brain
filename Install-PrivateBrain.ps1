@@ -81,10 +81,11 @@ function Resolve-EngineDir([string]$root) {
         if (-not $c) { continue }
         if (-not (Test-Path $c)) { continue }
         $marker = @(
-            (Join-Path $c "beast-mode.md", "beast-enterprise.md"),
+            (Join-Path $c "beast-mode.md"),
             (Join-Path $c "beast-enterprise.md"),
             (Join-Path $c "scripts\organism.py"),
-            (Join-Path $c "scripts\orchestrate.py")
+            (Join-Path $c "scripts\orchestrate.py"),
+            (Join-Path $c "scripts\install_hooks.py")
         )
         foreach ($m in $marker) {
             if (Test-Path $m) { return (Resolve-Path $c).Path }
