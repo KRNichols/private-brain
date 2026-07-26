@@ -161,6 +161,7 @@ def stage_env(tmp: Path) -> tuple[Path, Path, dict[str, str]]:
             # allow public OSS force-feed for this ultimate test
             "PB_FORCE_FEED_TINY": "1",
             "PB_GOLDEN_ISSUE_E2E": "1",
+            "PB_ALLOW_PUBLIC_INGEST": "1",
         }
     )
     # keep GITHUB_TOKEN if present
