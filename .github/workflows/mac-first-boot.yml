@@ -30,6 +30,7 @@ jobs:
         env:
           PB_ENTERPRISE: "1"
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_CI: "1"
         run: |
           set -e
           if [ -f scripts/freeze_for_corporate ]; then
