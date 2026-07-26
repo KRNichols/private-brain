@@ -1,0 +1,55 @@
+# AWS / AppGate / SSM localhost shim — configuration already on board
+# Filled further by config_of_config.py (read-only inventory) + operators.
+
+version: 1
+enabled: true
+region_default: gov-region-1
+
+# Codex is EDGE only. Models + durable RAG live in AWS when ATO allows.
+edge:
+  codex_sideload: true
+  product_cli: false
+  local_brain: filesystem   # dual_write later
+
+appgate:
+  required_for_internal_sources: true
+  sources: [gitlab, jira, confluence]
+  note: "Internet may work; tools are ZTNA-gated. Start AppGate before crawl."
+
+ssm_loopback:
+  purpose: "Codex CLI → localhost → AWS-hosted OpenAI-compatible / Bedrock proxy"
+  plugin: session-manager-plugin
+  document_examples:
+    - AWS-StartPortForwardingSession
+    - AWS-StartPortForwardingSessionToRemoteHost
+  local_base_url_env: PB_LLM_BASE_URL
+  example: "http://127.0.0.1:8443/v1"
+
+models_approved_classes:
+  # Replace slugs with account-enabled IDs after enablement
+  - id: enterprise-frontier-model
+    class: frontier_general
+    roles: [orchestrator, code_assistant, hard-synthesis]
+  - id: nova-pro
+    class: balanced
+    roles: [retriever, synthesizer, planning_assistant, technical_documentor]
+  - id: nova-mini
+    class: fast_cheap
+    roles: [watcher, gitlab-topo, jira-topo, confluence-topo, cost_manager]
+
+rag_data_plane:
+  region: gov-region-1
+  graph: neptune            # future dual-write
+  vectors: opensearch
+  embeddings: bedrock-titan # or approved embed model
+  dual_write_filesystem: true
+
+# Keep gov-region-1 unless ATO / Bedrock model table says otherwise.
+region_decision:
+  preferred: gov-region-1
+  rethink_if:
+    - models only enabled in us-gov-east-1
+    - latency-critical users pinned to east
+    - separate IL enclaves require split accounts
+  do_not:
+    - mix commercial us-west-2 credentials with Government Cloud data plane

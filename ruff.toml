@@ -1,0 +1,11 @@
+# Private Brain — practical lint gates (not corporate style theater)
+target-version = "py310"
+line-length = 120
+exclude = ["venv", ".brain", "**/__pycache__"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]  # syntax + undefined names
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"visualizer/live_gui.py" = ["E402"]  # pygame optional import

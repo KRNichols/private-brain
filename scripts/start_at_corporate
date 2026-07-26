@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# Day-1 bootstrap at Corporate — self-recovering, Corporate Package Index-aware, no AI required.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ ! -f "$ROOT/SETUP.command" && -f "$(cd "$(dirname "$0")/../.." && pwd)/SETUP.command" ]]; then
+  ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+fi
+
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+export PRIVATE_BRAIN_HOME="${PRIVATE_BRAIN_HOME:-$CODEX_HOME/private-brain}"
+export PATH="$HOME/bin:/Applications/ChatGPT.app/Contents/Resources:${PATH:-}"
+
+PROGRAM="${PB_PROGRAM_ID:-}"
+HOSTS="${PB_ALLOWLIST_HOSTS:-}"
+CLASS="${PB_CLASSIFICATION:-INTERNAL}"
+DO_SETUP=1
+DO_SAP=1
+DO_HEAL=1
+NONINTERACTIVE=0
+INGEST_URL=""
+
+usage() {
+  cat <<EOF
+Usage: start_at_corporate [options]
+
+  --program NAME       PB_PROGRAM_ID
+  --hosts h1,h2        PB_ALLOWLIST_HOSTS (internal only)
+  --classification X   default INTERNAL
+  --ingest-url URL     optional first internal harvest after doctor
+  --no-setup           skip SETUP even if missing
+  --no-sap             skip SAP pack
+  --no-heal            skip self-heal before doctor
+  --yes                non-interactive
+  -h, --help
+
+Corporate Package Index (Corporate Library):
+  Place corporate-package-index.env next to SETUP (or under PRIVATE_BRAIN_HOME) with:
+    export PIP_INDEX_URL=https://…corporate-library…/simple
+    export PIP_TRUSTED_HOST=…
+  See CORPORATE_PACKAGE_INDEX.md — core RAG needs no pip packages.
+
+Examples:
+  ./scripts/start_at_corporate --yes --program MyProgram --hosts gitlab.corp.internal
+  ./START_AT_CORPORATE.command
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --program) PROGRAM="${2:-}"; shift 2 ;;
+    --program=*) PROGRAM="${1#*=}"; shift ;;
+    --hosts) HOSTS="${2:-}"; shift 2 ;;
+    --hosts=*) HOSTS="${1#*=}"; shift ;;
+    --classification) CLASS="${2:-}"; shift 2 ;;
+    --classification=*) CLASS="${1#*=}"; shift ;;
+    --ingest-url) INGEST_URL="${2:-}"; shift 2 ;;
+    --ingest-url=*) INGEST_URL="${1#*=}"; shift ;;
+    --no-setup) DO_SETUP=0; shift ;;
+    --no-sap) DO_SAP=0; shift ;;
+    --no-heal) DO_HEAL=0; shift ;;
+    --yes|-y) NONINTERACTIVE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+echo "=============================================="
+echo " Private Brain — START AT CORPORATE"
+echo "=============================================="
+echo " CODEX_HOME=$CODEX_HOME"
+echo " PRIVATE_BRAIN_HOME=$PRIVATE_BRAIN_HOME"
+echo
+
+# Corporate Package Index env before any pip/SETUP
+for envf in \
+  "$ROOT/corporate-package-index.env" \
+  "$PRIVATE_BRAIN_HOME/corporate-package-index.env" \
+  "$HOME/.codex/corporate-package-index.env" \
+  "$ROOT/corporate.env" \
+  "$PRIVATE_BRAIN_HOME/corporate.env"
+do
+  if [[ -f "$envf" ]]; then
+    echo "==> Loading $envf"
+    set +u
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        ''|\#*) continue ;;
+        export\ *) eval "$line" 2>/dev/null || true ;;
+      esac
+    done < "$envf"
+    set -u
+  fi
+done
+
+if [[ -n "${PIP_INDEX_URL:-${PB_PIP_INDEX_URL:-}}" ]]; then
+  echo "==> Corporate Library/Corporate Package Index index: ${PIP_INDEX_URL:-$PB_PIP_INDEX_URL}"
+else
+  echo "==> No PIP_INDEX_URL set — headless core needs no pip; GodsEye needs pygame from Corporate Library"
+  echo "    See corporate-package-index.env.example + CORPORATE_PACKAGE_INDEX.md"
+fi
+
+need_setup=0
+if [[ ! -d "$PRIVATE_BRAIN_HOME/scripts" || ! -f "$PRIVATE_BRAIN_HOME/scripts/orchestrate.py" ]]; then
+  need_setup=1
+fi
+if [[ ! -f "$CODEX_HOME/hooks.json" ]]; then
+  need_setup=1
+fi
+
+if [[ "$need_setup" == "1" && "$DO_SETUP" == "1" ]]; then
+  echo "==> Private Brain not fully installed — running SETUP"
+  export PB_ENTERPRISE=1
+  if [[ -f "$ROOT/SETUP.command" ]]; then
+    bash "$ROOT/SETUP.command" || true
+  elif [[ -f "$ROOT/Install-PrivateBrain.ps1" ]] && command -v pwsh >/dev/null 2>&1; then
+    pwsh -NoProfile -File "$ROOT/Install-PrivateBrain.ps1" || true
+  else
+    echo "ERROR: SETUP.command not found at $ROOT — extract full PrivateBrain-CORPORATE zip" >&2
+    exit 1
+  fi
+elif [[ "$need_setup" == "1" ]]; then
+  echo "ERROR: not installed and --no-setup set" >&2
+  exit 1
+else
+  echo "==> Install present"
+fi
+
+export PATH="$HOME/bin:$PATH"
+BM="$HOME/bin/beastMode"
+[[ -x "$BM" ]] || BM="$PRIVATE_BRAIN_HOME/scripts/beastMode"
+if [[ ! -x "$BM" ]]; then
+  # recover launcher from package
+  if [[ -f "$ROOT/package/scripts/beastMode" ]]; then
+    mkdir -p "$HOME/bin" "$PRIVATE_BRAIN_HOME/scripts"
+    cp -f "$ROOT/package/scripts/beastMode" "$HOME/bin/beastMode"
+    cp -f "$ROOT/package/scripts/beastMode" "$PRIVATE_BRAIN_HOME/scripts/beastMode"
+    chmod +x "$HOME/bin/beastMode" "$PRIVATE_BRAIN_HOME/scripts/beastMode"
+    BM="$HOME/bin/beastMode"
+    echo "==> Recovered beastMode launcher"
+  else
+    echo "ERROR: beastMode launcher missing — re-run SETUP" >&2
+    exit 1
+  fi
+fi
+
+if [[ "$NONINTERACTIVE" != "1" ]]; then
+  if [[ -z "$PROGRAM" ]]; then
+    read -r -p "Program id (PB_PROGRAM_ID) [unassigned]: " PROGRAM
+    PROGRAM="${PROGRAM:-unassigned}"
+  fi
+  if [[ -z "$HOSTS" ]]; then
+    read -r -p "Allowlist hosts comma-separated (empty=any non-public): " HOSTS
+  fi
+  read -r -p "Classification [$CLASS]: " c_in
+  CLASS="${c_in:-$CLASS}"
+else
+  PROGRAM="${PROGRAM:-unassigned}"
+fi
+
+export PB_ENTERPRISE=1
+export PB_PROGRAM_ID="$PROGRAM"
+export PB_CLASSIFICATION="$CLASS"
+export PB_PIP_REQUIRE_ARTIFACTORY="${PB_PIP_REQUIRE_ARTIFACTORY:-1}"
+if [[ -n "$HOSTS" ]]; then
+  export PB_ALLOWLIST_HOSTS="$HOSTS"
+fi
+
+# Persist policy into enterprise.yaml
+ENT_YAML="$PRIVATE_BRAIN_HOME/config/enterprise.yaml"
+if [[ -f "$ENT_YAML" ]]; then
+  echo "==> Updating enterprise.yaml"
+  PY="${PRIVATE_BRAIN_HOME}/venv/bin/python3"
+  [[ -x "$PY" ]] || PY="$(command -v python3 || true)"
+  if [[ -n "$PY" ]]; then
+    PROGRAM="$PROGRAM" CLASS="$CLASS" HOSTS="$HOSTS" ENT_YAML="$ENT_YAML" "$PY" - <<'PY'
+import os, re
+from pathlib import Path
+p = Path(os.environ["ENT_YAML"])
+text = p.read_text(encoding="utf-8")
+prog = os.environ.get("PROGRAM") or "unassigned"
+klass = os.environ.get("CLASS") or "INTERNAL"
+hosts = [h.strip() for h in (os.environ.get("HOSTS") or "").split(",") if h.strip()]
+
+def set_scalar(key, val, text):
+    pat = re.compile(rf"^{re.escape(key)}\s*:.*$", re.M)
+    line = f"{key}: {val}"
+    if pat.search(text):
+        return pat.sub(line, text, count=1)
+    return text + f"\n{line}\n"
+
+text = set_scalar("program_id", prog, text)
+text = set_scalar("default_classification", klass, text)
+block = "allowlist_hosts:\n" + ("".join(f"  - {h}\n" for h in hosts) if hosts else "  []\n")
+if "allowlist_hosts:" in text:
+    text = re.sub(r"allowlist_hosts:\s*(?:\n(?:\s+-\s+.+)*)?", block, text, count=1)
+else:
+    text += "\n" + block
+p.write_text(text, encoding="utf-8")
+print("wrote", p)
+PY
+  fi
+fi
+
+ENVF="$PRIVATE_BRAIN_HOME/corporate.env"
+{
+  echo "# Generated by start_at_corporate — do not commit secrets"
+  echo "export CODEX_HOME=\"$CODEX_HOME\""
+  echo "export PRIVATE_BRAIN_HOME=\"$PRIVATE_BRAIN_HOME\""
+  echo "export PATH=\"\$HOME/bin:/Applications/ChatGPT.app/Contents/Resources:\$PATH\""
+  echo "export PB_ENTERPRISE=1"
+  echo "export PB_PROGRAM_ID=\"$PROGRAM\""
+  echo "export PB_CLASSIFICATION=\"$CLASS\""
+  echo "export PB_PIP_REQUIRE_ARTIFACTORY=1"
+  if [[ -n "${PIP_INDEX_URL:-}" ]]; then
+    echo "export PIP_INDEX_URL=\"$PIP_INDEX_URL\""
+    echo "export PB_PIP_INDEX_URL=\"$PIP_INDEX_URL\""
+  fi
+  if [[ -n "${PIP_TRUSTED_HOST:-}" ]]; then
+    echo "export PIP_TRUSTED_HOST=\"$PIP_TRUSTED_HOST\""
+    echo "export PB_PIP_TRUSTED_HOST=\"$PIP_TRUSTED_HOST\""
+  fi
+  if [[ -n "$HOSTS" ]]; then
+    echo "export PB_ALLOWLIST_HOSTS=\"$HOSTS\""
+  fi
+} > "$ENVF"
+echo "==> Wrote $ENVF"
+
+if [[ "$DO_HEAL" == "1" ]]; then
+  echo "==> Self-heal (profile · chain · vectors · snapshot)"
+  set +e
+  "$BM" --enterprise --heal
+  set -e
+fi
+
+echo "==> Doctor (enterprise)"
+set +e
+"$BM" --enterprise --doctor
+DOC=$?
+set -e
+if [[ "$DOC" -ne 0 ]]; then
+  echo
+  echo "DOCTOR FAIL — running heal once more…"
+  set +e
+  "$BM" --enterprise --heal
+  "$BM" --enterprise --doctor
+  DOC=$?
+  set -e
+fi
+if [[ "$DOC" -ne 0 ]]; then
+  echo
+  echo "DOCTOR STILL FAIL — fix lines above, then:"
+  echo "  source $ENVF && beastMode --enterprise --heal && beastMode --enterprise --doctor"
+  exit "$DOC"
+fi
+
+if [[ -n "$INGEST_URL" ]]; then
+  echo "==> First ingest: $INGEST_URL"
+  "$BM" --enterprise -ingestion "$INGEST_URL" --ingest-only || {
+    echo "WARN: ingest failed — check token / proxy / allowlist / Corporate Library connectivity" >&2
+  }
+fi
+
+if [[ "$DO_SAP" == "1" ]]; then
+  echo "==> SAP evidence pack"
+  "$BM" --enterprise --sap-pack || true
+fi
+
+echo
+echo "=============================================="
+echo " READY FOR PILOT"
+echo "=============================================="
+echo "  source $ENVF"
+echo "  beastMode --enterprise"
+echo "  beastMode --enterprise --heal      # self-recover anytime"
+echo "  beastMode --enterprise --doctor"
+echo "  beastMode --enterprise -GodsEye    # only if pygame from Corporate Library"
+echo "  beastMode --enterprise -ingestion URL --ingest-only"
+echo "  beastMode --enterprise --sap-pack"
+echo
+echo "  Program: $PROGRAM"
+echo "  Class:   $CLASS"
+echo "  Hosts:   ${HOSTS:-(any non-public)}"
+echo "  Index:   ${PIP_INDEX_URL:-${PB_PIP_INDEX_URL:-(none — headless OK)}}"
+echo "  Docs:    START_AT_CORPORATE.md · CORPORATE_PACKAGE_INDEX.md"
+echo "=============================================="
+exit 0

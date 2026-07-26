@@ -1,0 +1,37 @@
+# Agent configuration-of-configuration already on board.
+# config_of_config.py inventories live files; this file is the intended catalog.
+# Codex sideload only — roles are edge agents; models may live on AWS.
+
+version: 1
+sideload_only: true
+
+families:
+  code_assistant:
+    description: Implementation, refactors, citations from RAG-DAG
+    agents: [orchestrator, retriever, graph-writer, synthesizer, rater]
+  planning_assistant:
+    description: Sprint/plan DAG, metrics, optimization
+    agents: [orchestrator, metrics-master, optimizer, rater, cost_manager]
+  technical_documentor:
+    description: Runbooks, design notes, Confluence-aware synthesis
+    agents: [synthesizer, confluence-topo, confluence-deep, auditor]
+  source_crawlers:
+    description: Polite recursive AppGate-backed harvest
+    agents: [gitlab-topo, gitlab-deep, jira-topo, jira-deep, confluence-topo, confluence-deep]
+  security_ops:
+    description: Audit chain, secrets, SAP packs
+    agents: [security_auditor, auditor, watcher]
+  config_of_config:
+    description: Scripted inventory before intelligent Day-1 / AWS shim analysis
+    agents: [config_board, day1_map, shim_preflight]
+
+scripts:
+  config_of_config: scripts/config_of_config.py
+  day1: scripts/DAY1
+  day1_intelligent: scripts/day1_first_start.py
+  internal_crawl: scripts/internal_crawl_swarm.py
+  validate: scripts/validate_enterprise.py
+
+aws_port:
+  pattern: same role names → ECS/Lambda/SQS workers in Government Cloud
+  region_default: gov-region-1

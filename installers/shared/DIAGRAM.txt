@@ -1,0 +1,35 @@
+PRIVATE BRAIN — ONE PICTURE (Windows)
+=====================================
+Open this if Mermaid/Markdown preview is blocked. Same content as DIAGRAM.md Layer A.
+
+THE WHOLE PRODUCT
+  You talk  ->  Private Brain remembers  ->  Codex answers with proof  ->  GodsEye shows the map
+
+WATER PIPE
+  1. START.ps1 once
+  2. MAP interview (packages · GitLab · Jira · Confluence · AWS)
+  3. LOCAL BRAIN on this PC (graph + search)
+  4. EVERY DAY: beastMode  ->  open Codex  ->  just talk
+
+YOU TOUCH                    YOU IGNORE
+  START.ps1 once               flags, YAML, routers
+  beastMode daily              heal, purity, DAG stages
+  talk in Codex                vector index details
+  I in GodsEye if curious      FPS / lod metrics
+
+GODSEYE
+  Full-bleed map · one Healthy pill · click a dot for a short card
+  drag=move  scroll=zoom  I=engineer panel  Q=quit
+
+FAILURE
+  Offline packages     -> route headless (chat still works)
+  GodsEye missing GL   -> stay headless; RAG still on
+  No citations         -> system refused to invent; fix sources
+
+SENIOR ONE-LINER
+  Local RAG-DAG + concert (retrieve->validate->synthesize->critic->emit)
+  + organism water-pipe + US sovereign models only (gpt-5.1 / GSS 120B)
+  + cite-or-block + pilot_ops ship gate. Zip = code; .brain grows on laptop.
+
+MONDAY
+  Quit Codex -> expand zip -> .\START.ps1 -> beastMode -> talk

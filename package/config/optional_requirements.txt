@@ -1,0 +1,11 @@
+# Optional packages for GodsEye / nicer YAML — NOT required for core RAG-DAG.
+# Home: pip install -r optional_requirements.txt
+# Corporate: install from Corporate Library / Protected Gateway via PIP_INDEX_URL; if missing, request onboard.
+#         beastMode --heal / capabilities.py --heal will try index install when set.
+#         Core always runs headless without these.
+
+numpy>=1.24
+pygame>=2.5.0
+PyOpenGL>=3.1.0
+PyOpenGL-accelerate>=3.1.0; platform_system != "Darwin" or platform_machine != "arm64"
+PyYAML>=5.4

@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+# Freeze Private Brain Corporate kit: dual folders mac/ + windows/ (OS-specific, minimal).
+# Package model: Corporate Library / Protected Gateway approved-source via PIP_INDEX_URL — NOT offline wheel kit primary.
+# Core is stdlib; optional GodsEye installs from Corporate Package Index at destination.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LIVE="${PRIVATE_BRAIN_HOME:-$HOME/.codex/private-brain}"
+PKG="$ROOT/package"
+DIST="$ROOT/dist"
+INST="$ROOT/installers"
+TS="$(date -u +%Y%m%dT%H%M%SZ)"
+NAME="PrivateBrain-CORPORATE-${TS}"
+STAGING="$DIST/_staging_${TS}"
+
+echo "=============================================="
+echo " freeze_for_corporate (mac/ + windows/)"
+echo " LIVE=$LIVE"
+echo " PKG=$PKG"
+echo "=============================================="
+
+if [[ ! -d "$LIVE/scripts" ]]; then
+  echo "ERROR: live install not found at $LIVE" >&2
+  exit 1
+fi
+
+mkdir -p "$PKG" "$DIST" "$PKG/config" "$PKG/scripts" "$PKG/hooks" "$PKG/visualizer"
+
+echo "==> Sync engine live → package (no .brain, no venv)"
+rsync -a --delete \
+  --exclude '.brain' \
+  --exclude 'venv' \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  --exclude '.DS_Store' \
+  --exclude 'corporate.env' \
+  --exclude 'corporate.env.ps1' \
+  --exclude 'day1.env' \
+  --exclude 'day1.env.ps1' \
+  --exclude 'corporate-package-index.env' \
+  --exclude '*.env' \
+  "$LIVE/scripts/" "$PKG/scripts/" 2>/dev/null || cp -R "$LIVE/scripts/"* "$PKG/scripts/"
+# Never ship secrets / local judge dumps
+rm -f "$PKG"/day1.env* "$PKG"/corporate.env* "$PKG"/corporate-package-index.env 2>/dev/null || true
+find "$PKG" \( -name 'day1.env*' -o -name 'corporate.env*' -o -name 'corporate-package-index.env' \) -delete 2>/dev/null || true
+find "$PKG" -name '*.env' ! -name '*.env.example' -delete 2>/dev/null || true
+# day1 wizard lives under package/scripts (source of truth already synced from live above)
+rsync -a --exclude '__pycache__' "$LIVE/hooks/" "$PKG/hooks/" 2>/dev/null || true
+rsync -a --exclude '__pycache__' "$LIVE/visualizer/" "$PKG/visualizer/" 2>/dev/null || true
+rsync -a --exclude '__pycache__' "$LIVE/private_brain/" "$PKG/private_brain/" 2>/dev/null || true
+rsync -a --exclude '__pycache__' "$LIVE/loop_graph_harness/" "$PKG/loop_graph_harness/" 2>/dev/null || true
+rsync -a --exclude '__pycache__' "$LIVE/agents/" "$PKG/agents/" 2>/dev/null || true
+rsync -a --exclude '__pycache__' "$LIVE/codex-agents/" "$PKG/codex-agents/" 2>/dev/null || true
+rsync -a "$LIVE/config/" "$PKG/config/" 2>/dev/null || true
+for f in beast-mode.md beast-enterprise.md README.md READY.md SIDELOAD.md ruff.toml developer_instructions.txt CORPORATE_PACKAGE_INDEX.md MISSION_MONDAY.md; do
+  [[ -f "$LIVE/$f" ]] && cp -f "$LIVE/$f" "$PKG/$f"
+done
+[[ -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" ]] && cp -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" "$PKG/CORPORATE_PACKAGE_INDEX.md"
+[[ -f "$ROOT/corporate-package-index.env.example" ]] && cp -f "$ROOT/corporate-package-index.env.example" "$PKG/corporate-package-index.env.example"
+[[ -f "$ROOT/corporate.env.example" ]] && cp -f "$ROOT/corporate.env.example" "$PKG/corporate.env.example"
+# Corporate Library / Protected Gateway approved-source + freeze policy (not offline wheel kit primary)
+mkdir -p "$PKG/config"
+for jf in judge_corporate_library_policy.json judge_freeze.json; do
+  if [[ -f "$LIVE/config/$jf" ]]; then
+    cp -f "$LIVE/config/$jf" "$PKG/config/$jf"
+  elif [[ -f "$ROOT/package/config/$jf" ]]; then
+    cp -f "$ROOT/package/config/$jf" "$PKG/config/$jf"
+  fi
+done
+# Keep dual-OS freeze in package (this script), not any stale live copy
+cp -f "$ROOT/scripts/freeze_for_corporate" "$PKG/scripts/freeze_for_corporate" 2>/dev/null || true
+chmod +x "$PKG/scripts/freeze_for_corporate" 2>/dev/null || true
+chmod +x "$PKG/scripts/beastMode" "$PKG/scripts/day1_first_start.py" 2>/dev/null || true
+
+chmod +x "$PKG/scripts/day1_first_start.py" 2>/dev/null || true
+# keep live copy in sync when package has day1 and paths differ
+if [[ -f "$PKG/scripts/day1_first_start.py" && "$PKG/scripts/day1_first_start.py" != "$LIVE/scripts/day1_first_start.py" ]]; then
+  cp -f "$PKG/scripts/day1_first_start.py" "$LIVE/scripts/day1_first_start.py" 2>/dev/null || true
+fi
+
+echo "==> Deps model: Corporate Library / Protected Gateway via PIP_INDEX_URL (primary)"
+# Primary Corporate model: optional GodsEye installs at destination from Corporate Library / Protected Gateway
+# (PIP_INDEX_URL / PB_PIP_INDEX_URL). This freeze never scrapes public PyPI into
+# vendor/wheels. Local wheels (if any) are a last-resort cache only — never required.
+if [[ -f "$LIVE/visualizer/requirements.txt" ]]; then
+  mkdir -p "$PKG/visualizer"
+  cp -f "$LIVE/visualizer/requirements.txt" "$PKG/visualizer/requirements.txt"
+elif [[ ! -f "$PKG/visualizer/requirements.txt" ]]; then
+  mkdir -p "$PKG/visualizer"
+  cat > "$PKG/visualizer/requirements.txt" <<'REQ'
+# GodsEye optional — install only from Corporate Library / Protected Gateway (PIP_INDEX_URL). Not required for headless.
+pygame>=2.5.0
+PyOpenGL>=3.1.0
+REQ
+fi
+# Drop legacy "offline requirements" marker (not the Corporate model)
+rm -f "$PKG/vendor/requirements-offline.txt" 2>/dev/null || true
+# Keep vendor/wheels only as optional last-resort cache dir (empty is fine; never required).
+# Do not populate it from public PyPI during freeze.
+mkdir -p "$PKG/vendor/wheels"
+# Remove any accidental public-PyPI scrapes if present (freeze is not a wheel kit)
+if [[ -d "$PKG/vendor/wheels" ]]; then
+  # leave intentionally placed Corporate Package Index-origin wheels if operator set KEEP_VENDOR_WHEELS=1
+  if [[ "${KEEP_VENDOR_WHEELS:-0}" != "1" ]]; then
+    find "$PKG/vendor/wheels" -type f -name '*.whl' -delete 2>/dev/null || true
+  fi
+fi
+mkdir -p "$PKG/vendor"
+cat > "$PKG/vendor/README.md" <<'EOF'
+# vendor/
+
+## Corporate package model (primary)
+
+**Corporate Library / Protected Gateway via `PIP_INDEX_URL` (or `PB_PIP_INDEX_URL`).**
+
+Optional GodsEye packages install at the destination from the approved Corporate Package Index remote:
+
+```bash
+export PIP_INDEX_URL="https://…corporate-library-or-protected-gateway…/simple"
+export PIP_TRUSTED_HOST="…"
+# then SETUP / pip install -r visualizer/requirements.txt
+```
+
+If a package is missing from Corporate Library / Protected Gateway → **request onboarding** or stay **headless** (core is stdlib).
+
+## Local wheels (`vendor/wheels/`)
+
+- **Last-resort cache only** — never required for freeze, SETUP, or enterprise pilot.
+- Not the primary Corporate delivery model.
+- Must be Corporate Package Index-origin if used; do not scrape public PyPI into this folder.
+- Empty directory is normal and correct.
+
+See `../CORPORATE_PACKAGE_INDEX.md`, `../config/judge_corporate_library_policy.json`, and `../config/judge_freeze.json`.
+EOF
+
+echo "==> MANIFEST"
+cat > "$PKG/CORPORATE_MANIFEST.json" <<EOF
+{
+  "name": "$NAME",
+  "frozen_at_utc": "$TS",
+  "layout": "mac/ + windows/",
+  "source_live": "$LIVE",
+  "enterprise": true,
+  "day1": "START → day1_first_start (corporate-library|aws|headless)",
+  "package_model": "approved_source",
+  "not_package_model": "offline_wheel_kit_primary",
+  "primary_deps_path": "Corporate Library / Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+  "local_wheels": "optional last-resort cache only; never required",
+  "core_deps": "stdlib only; optional GodsEye from Corporate Library / Protected Gateway via PIP_INDEX_URL",
+  "if_package_missing": "request Corporate Library / Protected Gateway onboard or drop feature / stay headless",
+  "policy": "config/judge_corporate_library_policy.json",
+  "freeze_policy": "config/judge_freeze.json",
+  "notes": "No .brain corpus. Primary: Corporate Library / Protected Gateway PIP_INDEX_URL. Optional local wheels only as last-resort cache; never required. Each OS folder is self-contained."
+}
+EOF
+
+# ── Stage dual OS folders ──────────────────────────────────────────
+# Root of each OS folder is INTENTIONALLY minimal:
+#   README.md · DIAGRAM.md · tools/
+echo "==> Stage mac/ + windows/ kit (clean root + tools/ planes)"
+
+rm -rf "$STAGING"
+mkdir -p "$STAGING/$NAME"
+
+# Top-level pick-your-OS readme
+cp -f "$INST/KIT_README.md" "$STAGING/$NAME/README.md"
+
+SHARED="$INST/shared"
+TOOLS_SRC="$SHARED/tools"
+
+stage_os_kit() {
+  local dest="$1"   # .../mac or .../windows
+  local os="$2"     # mac | windows
+  mkdir -p "$dest/tools"
+
+  # ── root: ONLY readme + diagram ──
+  cp -f "$SHARED/ROOT_README.md" "$dest/README.md"
+  cp -f "$SHARED/DIAGRAM.md" "$dest/DIAGRAM.md"
+
+  # ── tools plane READMEs ──
+  rsync -a --exclude '.DS_Store' "$TOOLS_SRC/" "$dest/tools/"
+
+  # ── tools/engine = package payload ──
+  mkdir -p "$dest/tools/engine"
+  rsync -a \
+    --exclude '__pycache__' \
+    --exclude '*.pyc' \
+    --exclude '.DS_Store' \
+    --exclude 'venv' \
+    --exclude '.brain' \
+    "$PKG/" "$dest/tools/engine/"
+  # deep docs into engine
+  mkdir -p "$dest/tools/engine/docs"
+  for f in INDEX.md LOOP_GRAPH_SOVEREIGN.md MERMAID.md KINGDOM_KEYS.md GODSEYE_HELP.md; do
+    [[ -f "$LIVE/docs/$f" ]] && cp -f "$LIVE/docs/$f" "$dest/tools/engine/docs/$f"
+  done
+  [[ -f "$SHARED/DIAGRAM.md" ]] && cp -f "$SHARED/DIAGRAM.md" "$dest/tools/engine/docs/DIAGRAM.md"
+
+  # ── tools/install = launchers only ──
+  local INS="$dest/tools/install"
+  mkdir -p "$INS"
+  cp -f "$TOOLS_SRC/install/README.md" "$INS/README.md" 2>/dev/null || true
+  [[ -f "$SHARED/golden_join.example.json" ]] && cp -f "$SHARED/golden_join.example.json" "$INS/golden_join.example.json"
+  cp -f "$ROOT/corporate-package-index.env.example" "$INS/corporate-package-index.env.example" 2>/dev/null || true
+  cat > "$INS/ROUTES.txt" <<'EOF'
+Package routes (START → day1). Same Mac/Windows.
+  corporate-library | aws | headless
+Corporate: place golden_join.json here (no secrets). Else interview/headless.
+EOF
+
+  if [[ "$os" == "mac" ]]; then
+    cp -f "$INST/mac/START.command" "$INS/START.command"
+    cp -f "$ROOT/SETUP.command" "$INS/SETUP.command"
+    cp -f "$ROOT/UNINSTALL.command" "$INS/UNINSTALL.command"
+    chmod +x "$INS/START.command" "$INS/SETUP.command" "$INS/UNINSTALL.command" \
+      "$dest/tools/engine/scripts/beastMode" \
+      "$dest/tools/engine/scripts/day1_first_start.py" \
+      "$dest/tools/engine/scripts/organism.py" 2>/dev/null || true
+    rm -f "$dest/tools/engine/scripts/beastMode.cmd" 2>/dev/null || true
+    rm -f "$dest/tools/engine/scripts/"*.ps1 2>/dev/null || true
+  else
+    cp -f "$INST/windows/START.ps1" "$INS/START.ps1"
+    cp -f "$INST/windows/START.cmd" "$INS/START.cmd" 2>/dev/null || true
+    # START.cmd may need path update — write thin wrapper
+    cat > "$INS/START.cmd" <<'CMD'
+@echo off
+setlocal
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0START.ps1" %*
+CMD
+    cp -f "$ROOT/SETUP.ps1" "$INS/SETUP.ps1"
+    cp -f "$ROOT/SETUP.cmd" "$INS/SETUP.cmd" 2>/dev/null || true
+    cp -f "$ROOT/Install-PrivateBrain.ps1" "$INS/Install-PrivateBrain.ps1"
+    cp -f "$ROOT/UNINSTALL.ps1" "$INS/UNINSTALL.ps1"
+    cp -f "$ROOT/UNINSTALL.cmd" "$INS/UNINSTALL.cmd" 2>/dev/null || true
+  fi
+}
+
+stage_os_kit "$STAGING/$NAME/mac" mac
+stage_os_kit "$STAGING/$NAME/windows" windows
+
+# ── kit root note ──
+cat > "$STAGING/$NAME/START_HERE.txt" <<EOF
+Private Brain dual-OS kit — $TS
+
+Mac ≡ Windows. Clean root: README + DIAGRAM + tools/
+
+1. Open YOUR OS folder:
+     mac/      → README.md → DIAGRAM.md → tools/install/START.command
+     windows/  → README.md → DIAGRAM.md → tools/install/START.ps1
+
+2. Every day: open Codex and talk (hooks sideloaded).
+   stop beast mode → pause RAG this session
+   reopen Codex → beast on again
+
+3. Corporate golden: tools/install/golden_join.json (no secrets) when you have it.
+
+tools/ planes: skills · abilities · intelligence · rulings · judging ·
+               non_hallucination · metrics · engine · install
+EOF
+
+# clean pyc from staging
+find "$STAGING" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find "$STAGING" -name '*.pyc' -delete 2>/dev/null || true
+
+ZIP="$DIST/${NAME}.zip"
+(
+  cd "$STAGING"
+  zip -r -q "$ZIP" "$NAME"
+)
+
+# OS-only READY zips from same stage (before rm staging)
+echo "==> Build MAC-READY + WINDOWS-READY from same stage"
+rm -f "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip"
+( cd "$STAGING/$NAME/windows" && zip -r -q "$DIST/PrivateBrain-WINDOWS-READY.zip" . )
+( cd "$STAGING/$NAME/mac" && zip -r -q "$DIST/PrivateBrain-MAC-READY.zip" . )
+if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip" | tee "$DIST/READY.sha256"
+  grep "WINDOWS-READY" "$DIST/READY.sha256" > "$DIST/PrivateBrain-WINDOWS-READY.sha256" || true
+elif command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip" | tee "$DIST/READY.sha256"
+fi
+find "$DIST" -maxdepth 1 -type d -name '_staging_*' ! -name "_staging_${TS}" -exec rm -rf {} + 2>/dev/null || true
+
+# Pre-ship nuclear x10 (fail closed)
+if [[ -f "$LIVE/scripts/nuclear_x10.py" || -f "$LIVE/scripts/nuclear_zero_fail.py" ]]; then
+  echo "==> NUCLEAR pre-ship gate"
+  NUC="$LIVE/scripts/nuclear_x10.py"
+  [[ -f "$NUC" ]] || NUC="$LIVE/scripts/nuclear_zero_fail.py"
+  if ! ( cd "$LIVE" && PB_ENTERPRISE=1 PRIVATE_BRAIN_HOME="$LIVE" "${LIVE}/venv/bin/python3" "$NUC" ); then
+    echo "NUCLEAR RED — deleting ship zips" >&2
+    rm -f "$ZIP" "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip"
+    rm -rf "$STAGING"
+    exit 1
+  fi
+fi
+
+rm -rf "$STAGING"
+
+if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$ZIP" | tee "$DIST/${NAME}.sha256"
+elif command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "$ZIP" | tee "$DIST/${NAME}.sha256"
+fi
+
+echo
+echo "FROZEN (dual OS):"
+echo "  $ZIP"
+echo "  Size: $(du -h "$ZIP" | awk '{print $1}')"
+echo "  Extract → open mac/ OR windows/ → README.md + DIAGRAM.md + tools/"
+echo "  Install: tools/install/START.(ps1|command)"
+echo

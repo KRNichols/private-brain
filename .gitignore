@@ -1,0 +1,14 @@
+.brain/
+venv/
+__pycache__/
+*.pyc
+.env
+*.env
+!*.env.example
+corporate.env*
+day1.env*
+corporate-package-index.env
+dist/_staging_*
+.DS_Store
+*.egg-info/
+.pytest_cache/

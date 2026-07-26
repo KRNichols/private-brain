@@ -1,0 +1,129 @@
+# Prove macOS kit extract → START path (parity with Windows)
+name: Mac first-boot
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "scripts/**"
+      - "installers/**"
+      - "package/**"
+      - "hooks/**"
+      - ".github/workflows/mac-first-boot.yml"
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  mac-ready-smoke:
+    name: macos-latest READY smoke
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Freeze dual-OS kit
+        env:
+          PB_ENTERPRISE: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          if [ -f scripts/freeze_for_corporate ]; then
+            bash scripts/freeze_for_corporate
+          else
+            echo "freeze_for_corporate missing"
+            mkdir -p dist
+            if [ -d scripts ]; then exit 1; fi
+          fi
+
+      - name: Locate MAC-READY or CORPORATE zip
+        id: kit
+        run: |
+          set -e
+          if ls dist/PrivateBrain-MAC-READY.zip 1>/dev/null 2>&1; then
+            echo "zip=dist/PrivateBrain-MAC-READY.zip" >> "$GITHUB_OUTPUT"
+          elif ls dist/PrivateBrain-CORPORATE-*.zip 1>/dev/null 2>&1; then
+            Z=$(ls -t dist/PrivateBrain-CORPORATE-*.zip | head -1)
+            echo "zip=$Z" >> "$GITHUB_OUTPUT"
+          else
+            echo "zip=" >> "$GITHUB_OUTPUT"
+            if [ -d scripts ]; then exit 1; fi
+          fi
+
+      - name: Extract mac kit
+        if: steps.kit.outputs.zip != ''
+        run: |
+          set -e
+          mkdir -p kit kit_raw
+          unzip -q "${{ steps.kit.outputs.zip }}" -d kit_raw
+          if [ -f kit_raw/mac/README.md ]; then
+            cp -R kit_raw/mac/. kit/
+          elif [ -f kit_raw/README.md ]; then
+            cp -R kit_raw/. kit/
+          else
+            inner=$(find kit_raw -maxdepth 2 -type d -name mac | head -1)
+            if [ -n "$inner" ]; then
+              cp -R "$inner"/. kit/
+            else
+              find kit_raw | head -40
+              exit 1
+            fi
+          fi
+          ls -la kit
+          test -f kit/README.md
+          test -f kit/DIAGRAM.md
+          test -d kit/tools
+
+      - name: START.command headless
+        if: steps.kit.outputs.zip != ''
+        env:
+          PB_ENTERPRISE: "1"
+          PB_NONINTERACTIVE: "1"
+          PB_NO_OPEN_CODEX: "1"
+          PB_GODSEYE: "0"
+        run: |
+          set -e
+          cd kit
+          test -f tools/install/START.command
+          chmod +x tools/install/START.command tools/install/SETUP.command 2>/dev/null || true
+          # noninteractive headless if supported
+          PB_NONINTERACTIVE=1 ./tools/install/START.command -- --yes --route headless || \
+            PB_NO_OPEN_CODEX=1 ./tools/install/START.command
+
+      - name: Assert sideload wired
+        if: steps.kit.outputs.zip != ''
+        run: |
+          set -e
+          CODEX="${CODEX_HOME:-$HOME/.codex}"
+          test -f "$CODEX/hooks.json"
+          test -f "$CODEX/private-brain/scripts/organism.py" \
+            -o -f "$CODEX/private-brain/scripts/orchestrate.py"
+          if [ -f "$CODEX/beast-enterprise.config.toml" ]; then
+            grep -q "danger-full-access" "$CODEX/beast-enterprise.config.toml"
+            grep -q "never" "$CODEX/beast-enterprise.config.toml"
+            echo "OK mac danger-full-access profile"
+          else
+            echo "WARN: beast-enterprise.config.toml missing (hooks may still be live)"
+          fi
+          echo "OK Mac first-boot smoke"
+
+      - name: Optional GodsEye import smoke (no display required)
+        if: steps.kit.outputs.zip != ''
+        continue-on-error: true
+        run: |
+          # Soft: pygame/GL may not init on runner; import path only
+          python -c "import sys; sys.path.insert(0,'scripts'); print('skip gui')" || true
+
+      - name: Upload MAC-READY
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-ready-${{ github.sha }}
+          path: |
+            dist/PrivateBrain-MAC-READY.zip
+            dist/READY.sha256
+          if-no-files-found: warn

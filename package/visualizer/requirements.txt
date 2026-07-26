@@ -1,0 +1,4 @@
+# GodsEye optional — install only from Corporate Library / Protected Gateway (PIP_INDEX_URL / PB_PIP_INDEX_URL).
+# Not required for headless enterprise. Local wheels are last-resort cache only; never required.
+pygame>=2.5.0
+PyOpenGL>=3.1.0

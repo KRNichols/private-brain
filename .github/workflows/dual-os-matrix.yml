@@ -1,0 +1,68 @@
+# Dual-OS matrix: Ubuntu + Windows + macOS in one workflow
+# Use for release confidence / nightly
+name: Dual-OS matrix
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # daily ~08:00 UTC
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  matrix:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Nuclear x10
+        env:
+          PB_ENTERPRISE: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_NUCLEAR_HEADLESS: "1"
+        shell: bash
+        run: |
+          set -e
+          python -m pip install -U pip
+          if [ -f scripts/nuclear_x10.py ]; then
+            python scripts/nuclear_x10.py
+          elif [ -f scripts/nuclear_zero_fail.py ]; then
+            python scripts/nuclear_zero_fail.py
+          else
+            echo "nuclear scripts missing"
+            exit 1
+          fi
+
+  freeze-and-both-boots:
+    name: freeze + dual READY
+    runs-on: ubuntu-latest
+    needs: matrix
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Freeze
+        env:
+          PB_ENTERPRISE: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          bash scripts/freeze_for_corporate
+          ls -la dist/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dual-os-kits-${{ github.sha }}
+          path: |
+            dist/PrivateBrain-WINDOWS-READY.zip
+            dist/PrivateBrain-MAC-READY.zip
+            dist/PrivateBrain-CORPORATE-*.zip
+            dist/READY.sha256
+            dist/*.sha256

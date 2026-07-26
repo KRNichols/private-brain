@@ -1,0 +1,88 @@
+{
+  "schema": "private-brain.grok_model_routing.v1",
+  "checked_at": "2026-07-24",
+  "cli": "grok 0.2.112",
+  "catalog_source": "grok models + ~/.grok/models_cache.json",
+  "available_now": [
+    {
+      "id": "grok-4.5",
+      "name": "Grok 4.5",
+      "context_window": 500000,
+      "reasoning_efforts": ["high", "medium", "low"],
+      "default_effort": "high",
+      "selectable": true,
+      "role": "flagship_only_sku"
+    }
+  ],
+  "not_in_catalog_but_api_docs_mention": [
+    "grok-4.20-reasoning",
+    "grok-4.20-non-reasoning",
+    "grok-4-1-fast-reasoning",
+    "grok-4-1-fast-non-reasoning",
+    "grok-4-0709",
+    "grok-3",
+    "grok-3-mini"
+  ],
+  "dag_routing_now": {
+    "orchestrator": {
+      "model": "grok-4.5",
+      "effort": "high",
+      "subagent_type": null,
+      "notes": "Parent session only"
+    },
+    "explore": {
+      "model": "grok-4.5",
+      "effort": "medium",
+      "subagent_type": "explore",
+      "capability_mode": "read-only"
+    },
+    "plan": {
+      "model": "grok-4.5",
+      "effort": "high",
+      "subagent_type": "plan",
+      "capability_mode": "read-only"
+    },
+    "implement": {
+      "model": "grok-4.5",
+      "effort": "high",
+      "subagent_type": "general-purpose",
+      "capability_mode": "read-write"
+    },
+    "verify": {
+      "model": "grok-4.5",
+      "effort": "medium",
+      "subagent_type": "general-purpose",
+      "capability_mode": "execute"
+    },
+    "auditor": {
+      "model": "grok-4.5",
+      "effort": "high",
+      "subagent_type": "general-purpose",
+      "capability_mode": "read-only"
+    },
+    "watcher": {
+      "model": null,
+      "script_only": true,
+      "command": "watcher_loop.py"
+    },
+    "visualizer": {
+      "model": null,
+      "script_only": true,
+      "command": "graph_gl.py"
+    },
+    "crawl_worker": {
+      "model": "grok-4.5",
+      "effort": "low",
+      "subagent_type": "general-purpose",
+      "capability_mode": "execute",
+      "notes": "When multi-SKU appears, pin to fast non-reasoning"
+    }
+  },
+  "future_when_catalog_expands": {
+    "orchestrator": "grok-4.5",
+    "workers_volume": "grok-4-1-fast-non-reasoning or luna-class",
+    "workers_judgment": "grok-4-1-fast-reasoning",
+    "auditor": "strongest reasoning SKU",
+    "watcher": "script_only preferred"
+  }
+}

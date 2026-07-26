@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "name": "sres_bsf_approved_source",
+  "title": "Corporate Library / Protected Gateway approved-source package policy (Corporate)",
+  "model": "approved_source",
+  "not_model": "offline_wheel_kit_primary",
+  "summary": "Third-party packages come from Corporate Library Corporate Package Index or Protected Gateway-approved indexes via PIP_INDEX_URL. Missing package → request onboard or drop feature. Core RAG-DAG is stdlib and works headless with zero pip packages. Shipping a prebuilt wheel kit is never the primary enterprise model.",
+  "approved_indexes": [
+    {
+      "id": "corporate-library",
+      "label": "Corporate Library Corporate Package Index",
+      "role": "default_corporate",
+      "env": ["PIP_INDEX_URL", "PB_PIP_INDEX_URL", "PIP_TRUSTED_HOST", "PB_PIP_TRUSTED_HOST"]
+    },
+    {
+      "id": "protected-gateway",
+      "label": "Protected Gateway approved repos",
+      "role": "approved_equivalent",
+      "env": ["PIP_INDEX_URL", "PB_PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL"]
+    },
+    {
+      "id": "aws_codeartifact",
+      "label": "AWS CodeArtifact / Government Cloud approved index",
+      "role": "approved_equivalent",
+      "env": ["PIP_INDEX_URL", "PB_PIP_INDEX_URL"]
+    }
+  ],
+  "public_pypi_enterprise_default": false,
+  "core": {
+    "runtime": "python_stdlib",
+    "requires_corporate-package-index": false,
+    "requires_third_party_pip": false,
+    "headless_enterprise_valid": true,
+    "components": [
+      "concert",
+      "orchestrate",
+      "audit_chain",
+      "enterprise_policy",
+      "tfidf_vectors",
+      "hooks",
+      "sap_pack"
+    ]
+  },
+  "optional_third_party": {
+    "pygame": {
+      "feature": "GodsEye GUI",
+      "required_for_pilot": false,
+      "if_missing": ["request_sres_onboard", "drop_godseye", "stay_headless"]
+    },
+    "PyOpenGL": {
+      "feature": "GodsEye TRUE GL backend",
+      "required_for_pilot": false,
+      "if_missing": ["request_sres_onboard", "PB_GODSEYE_BACKEND=cpu", "stay_headless"]
+    },
+    "PyOpenGL-accelerate": {
+      "feature": "optional GL accel",
+      "required_for_pilot": false,
+      "if_missing": ["ignore"]
+    },
+    "PyYAML": {
+      "feature": "nicer enterprise.yaml parse",
+      "required_for_pilot": false,
+      "if_missing": ["stdlib_line_parser_fallback"]
+    }
+  },
+  "install_order": [
+    "Set PIP_INDEX_URL / PB_PIP_INDEX_URL (and usually PIP_TRUSTED_HOST) to Corporate Library or Protected Gateway approved remote via corporate-package-index.env",
+    "SETUP / Install-PrivateBrain installs optional deps only from that index",
+    "If package not in Corporate Library / Protected Gateway → request onboarding; do not scrape public PyPI in enterprise",
+    "If optional feature still missing → headless pilot remains valid (core is stdlib)",
+    "vendor/wheels is never primary; not required in freeze zip; emergency Corporate Package Index-origin only if policy allows"
+  ],
+  "if_package_missing": [
+    "request_onboard",
+    "use_approved_equivalent",
+    "drop_feature"
+  ],
+  "freeze_for_corporate": {
+    "ships_prebuilt_wheels_as_primary": false,
+    "ships_code_docs_config": true,
+    "ships_corporate-package-index_env_example": true,
+    "primary_deps_path": "Corporate Library / Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+    "local_wheels": "optional last-resort cache only; never required",
+    "destination_path": "extract → corporate-package-index.env (Corporate Library / Protected Gateway) → SETUP/START → beastMode --enterprise (headless OK)",
+    "judge": "config/judge_freeze.json",
+    "do_not": [
+      "Treat offline wheel kit as the Corporate delivery model",
+      "pip download public PyPI into vendor/wheels as the freeze default",
+      "Require vendor/wheels for SETUP or enterprise pilot",
+      "Claim Corporate is fully offline"
+    ]
+  },
+  "setup_policy": {
+    "enterprise_requires_corporate-package-index_for_third_party": true,
+    "allow_public_pypi_when": "dev laptop only (PB_ENTERPRISE unset and PB_PIP_REQUIRE_ARTIFACTORY unset)",
+    "skip_optional_deps_when_no_index": true,
+    "headless_ok_without_pygame": true
+  },
+  "pass_criteria": {
+    "docs_claim_offline_wheel_kit_primary": false,
+    "docs_claim_sres_bsf_primary": true,
+    "core_works_without_pip": true,
+    "missing_package_actions_allowed": [
+      "request_onboard",
+      "use_approved_equivalent",
+      "drop_feature",
+      "stay_headless"
+    ],
+    "pip_index_env_names": [
+      "PIP_INDEX_URL",
+      "PB_PIP_INDEX_URL"
+    ]
+  },
+  "judge": {
+    "fail_if": [
+      "freeze_for_corporate downloads or stages public-PyPI wheels as the primary kit contents",
+      "docs state Corporate is fully offline or must ship wheels",
+      "enterprise SETUP falls back to public PyPI when PB_ENTERPRISE=1",
+      "core runtime requires third-party packages"
+    ],
+    "pass_if": [
+      "Corporate Library / Protected Gateway PIP_INDEX_URL is the documented install path",
+      "missing package → request onboard or headless",
+      "core stdlib headless enterprise is documented as production-valid",
+      "judge_corporate_library_policy.json present under config/"
+    ]
+  }
+}

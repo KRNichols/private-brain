@@ -1,0 +1,87 @@
+# Private Brain — enterprise policy (Corporate pilot)
+# Activated by: beastMode --enterprise  (PB_ENTERPRISE=1)
+#
+# Env overrides (preferred at Corporate):
+#   PB_PROGRAM_ID
+#   PB_CLASSIFICATION
+#   PB_ALLOWLIST_HOSTS=host1,host2
+
+mode: enterprise
+program_id: brutal-suite
+default_classification: INTERNAL
+package_route: headless
+
+block_public_presets: true
+public_presets:
+  - gnome
+  - salsa
+  - gitlab
+  - freexian
+
+# Empty = any non-public host OK. Fill for hard allowlist:
+allowlist_hosts:
+  []
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+# Example:
+# allowlist_hosts:
+#   - gitlab.your.internal
+#   - jira.your.internal
+#   - confluence.your.internal
+
+demote_sources:
+  - brutal_suite
+  - perf
+
+demote_types:
+  - SwarmCrumb
+  - SwarmTag
+  - SwarmScout
+  - SwarmRate
+  - SwarmSummary
+  - KnowledgeGap
+  - CodexArtifact
+  - SessionTurn
+  - Probe
+  - PerfProbe
+  - MetricsSnapshot
+
+prefer_sources:
+  - vault
+  - codex_session
+  - gitlab
+  - jira
+  - confluence
+  - brain
+
+fail_closed_audit: true
+hard_citation_gate: true
+block_nuclear: true
+default_swarm_agents: 0

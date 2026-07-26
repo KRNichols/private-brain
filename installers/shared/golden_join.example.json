@@ -1,0 +1,30 @@
+{
+  "schema": "private-brain.coworker_join.v1",
+  "ts": null,
+  "program_id": "",
+  "classification": "INTERNAL",
+  "package_route": "",
+  "pip_index_url": "",
+  "aws_region": "gov-region-1",
+  "aws_profile_hint": "",
+  "llm_shim_url": "",
+  "opensearch_endpoint": "",
+  "neptune_endpoint": "",
+  "gitlab_url": "",
+  "jira_url": "",
+  "confluence_url": "",
+  "allowlist_hosts": [],
+  "models": {
+    "edge": "gpt-5.1",
+    "aws_frontier": "enterprise-frontier-model",
+    "note": "US sovereign only. Fill from Corporate golden_join when available — do not invent hosts/tokens."
+  },
+  "max_agents": "auto",
+  "godseye_default": "1",
+  "status": "AWAITING_CORPORATE_GOLDEN",
+  "human_steps": [
+    "Both Mac and Windows are the same product until golden_join is provided from the Corporate machine.",
+    "Copy real golden_join.json (no secrets) next to START on either OS — START applies it and skips re-interview.",
+    "Tokens never go in this file — secrets store only after install."
+  ]
+}

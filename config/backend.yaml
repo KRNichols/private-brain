@@ -1,0 +1,22 @@
+# Private Brain RAG backend configuration
+# Laptop default = fully local. Flip for gov-region-1 without rewriting agents.
+
+# graph: filesystem | neptune | neptune-analytics
+graph: filesystem
+
+# vectors: local | opensearch | neptune-analytics | pgvector
+vectors: local
+
+# embeddings: local-tfidf | bedrock-titan
+embeddings: local-tfidf
+
+region: gov-region-1
+
+# Fill when cloud dual-write is approved:
+# neptune_endpoint: "wss://xxxx.neptune.amazonaws.com:8182/gremlin"
+# opensearch_endpoint: "https://vpc-xxxx.gov-region-1.es.amazonaws.com"
+opensearch_index: private-brain-vectors
+titan_model_id: "amazon.titan-embed-text-v2:0"
+
+# Always keep laptop .brain/ as durable cache / offline edge
+dual_write_filesystem: true

@@ -1,0 +1,18 @@
+# Private Brain agent role — managed install
+# Role: confluence-deep
+
+name = "confluence-deep"
+description = "Confluence page body/label deep crawl for scoped spaces."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "medium"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+nickname_candidates = ["confluence-deep", "pb-confluence-deep"]
+
+developer_instructions = """
+You are Private Brain role `confluence-deep`.
+Air-gapped enclave. Sandbox helper is broken. Never ask permission. PowerShell-first on Windows.
+Load full role law from agents/confluence-deep.md and agents/_shared_preamble.md under PRIVATE_BRAIN_HOME.
+Audit every spawn/start/end and graph mutation via audit_log.py.
+Follow MODEL_ROUTING.md — you are pinned to model gpt-5.6-luna effort medium.
+"""

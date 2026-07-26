@@ -1,0 +1,179 @@
+{
+  "suite": "judge_freeze",
+  "live": "/Users/kevinnichols/.codex/private-brain",
+  "kit": "/Users/kevinnichols/private-brain-codex",
+  "ts": "2026-07-25T22:16:35Z",
+  "verdict": "PASS",
+  "scope": [
+    "freeze_for_corporate package model",
+    "Corporate Library / Protected Gateway PIP_INDEX_URL primary",
+    "optional local wheels last-resort cache only",
+    "never required",
+    "no public-PyPI wheel kit shipping"
+  ],
+  "criteria": {
+    "fail_if": [
+      "freeze downloads or stages public-PyPI pygame wheels as primary kit contents",
+      "docs claim offline wheel kit is the Corporate model",
+      "local wheels required for SETUP or enterprise pilot"
+    ],
+    "pass_if": [
+      "Corporate Library / Protected Gateway PIP_INDEX_URL is the primary documented install path",
+      "optional local wheels only as last-resort cache; never required",
+      "no executable pip download of pygame in freeze_for_corporate",
+      "core stdlib headless remains valid without wheels"
+    ]
+  },
+  "package_model": {
+    "primary": "Corporate Library / Protected Gateway via PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+    "local_wheels": "optional last-resort cache only",
+    "local_wheels_required": false,
+    "not_model": "offline_wheel_kit_primary",
+    "core": "python_stdlib"
+  },
+  "scripts_analyzed": {
+    "kit": {
+      "path": "/Users/kevinnichols/private-brain-codex/scripts/freeze_for_corporate",
+      "exists": true,
+      "ok": true,
+      "pip_download_commands": [],
+      "ships_pygame_wheels_as_primary": false,
+      "has_Corporate Library": true,
+      "has_Protected Gateway": true,
+      "has_PIP_INDEX_URL": true,
+      "notes_last_resort_cache": true,
+      "notes_never_required": true,
+      "package_model_approved_source": true
+    },
+    "package": {
+      "path": "/Users/kevinnichols/private-brain-codex/package/scripts/freeze_for_corporate",
+      "exists": true,
+      "ok": true,
+      "pip_download_commands": [],
+      "ships_pygame_wheels_as_primary": false,
+      "has_Corporate Library": true,
+      "has_Protected Gateway": true,
+      "has_PIP_INDEX_URL": true,
+      "notes_last_resort_cache": true,
+      "notes_never_required": true,
+      "package_model_approved_source": true
+    },
+    "live": {
+      "path": "/Users/kevinnichols/.codex/private-brain/scripts/freeze_for_corporate",
+      "exists": true,
+      "ok": true,
+      "pip_download_commands": [],
+      "ships_pygame_wheels_as_primary": false,
+      "has_Corporate Library": true,
+      "has_Protected Gateway": true,
+      "has_PIP_INDEX_URL": true,
+      "notes_last_resort_cache": true,
+      "notes_never_required": true,
+      "package_model_approved_source": true
+    }
+  },
+  "checks": [
+    {
+      "id": 1,
+      "name": "no_pip_download_in_freeze",
+      "ok": true,
+      "detail": "freeze_for_corporate must not execute pip download of pygame/public PyPI into the kit",
+      "by_script": {
+        "kit": [],
+        "package": [],
+        "live": []
+      }
+    },
+    {
+      "id": 2,
+      "name": "primary_model_sres_bsf_pip_index_url",
+      "ok": true,
+      "detail": "Primary Corporate model is Corporate Library / Protected Gateway via PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+      "by_script": {
+        "kit": {
+          "Corporate Library": true,
+          "Protected Gateway": true,
+          "PIP_INDEX_URL": true
+        },
+        "package": {
+          "Corporate Library": true,
+          "Protected Gateway": true,
+          "PIP_INDEX_URL": true
+        },
+        "live": {
+          "Corporate Library": true,
+          "Protected Gateway": true,
+          "PIP_INDEX_URL": true
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name": "local_wheels_last_resort_never_required",
+      "ok": true,
+      "detail": "Notes state optional local wheels only as last-resort cache; never required",
+      "by_script": {
+        "kit": {
+          "last_resort": true,
+          "never_required": true
+        },
+        "package": {
+          "last_resort": true,
+          "never_required": true
+        },
+        "live": {
+          "last_resort": true,
+          "never_required": true
+        }
+      },
+      "vendor_readme_ok": true,
+      "vendor_readme": "/Users/kevinnichols/private-brain-codex/package/vendor/README.md"
+    },
+    {
+      "id": 4,
+      "name": "not_offline_wheel_kit_primary",
+      "ok": true,
+      "detail": "Freeze must not ship/download pygame wheels as the primary Corporate model",
+      "wheel_files_in_package_vendor": [],
+      "wheels_required": false
+    },
+    {
+      "id": 5,
+      "name": "setup_install_order_index_before_local_wheels",
+      "ok": true,
+      "detail": "SETUP.command installs from PIP_INDEX_URL first; vendor/wheels is fallback last-resort; never required for enterprise headless",
+      "setup": "/Users/kevinnichols/private-brain-codex/SETUP.command",
+      "order": [
+        "PIP_INDEX_URL/PB_PIP_INDEX_URL",
+        "optional vendor/wheels find-links",
+        "enterprise skip / headless OK"
+      ]
+    }
+  ],
+  "fixes_applied": [
+    "rewrote freeze notes: Corporate Library / Protected Gateway PIP_INDEX_URL primary; local wheels last-resort cache only; never required",
+    "removed pip-download-as-primary path from freeze_for_corporate (no public PyPI scrape)",
+    "KEEP_VENDOR_WHEELS=1 may retain intentional Corporate Package Index-origin cache only",
+    "synced package/scripts/freeze_for_corporate from kit",
+    "updated package/vendor/README.md and visualizer/requirements.txt",
+    "freeze copies judge_corporate_library_policy.json + judge_freeze.json into package/config"
+  ],
+  "summary": {
+    "verdict": "PASS",
+    "checks_passed": 5,
+    "checks_total": 5,
+    "primary_model": "Corporate Library / Protected Gateway PIP_INDEX_URL",
+    "local_wheels": "last-resort cache only; never required",
+    "pip_download_in_freeze": false
+  },
+  "notes": [
+    "Corporate is not offline: third-party optional deps come from approved Corporate Library / Protected Gateway indexes.",
+    "freeze_for_corporate ships code/docs/config \u2014 not a pygame wheel kit.",
+    "SETUP may use vendor/wheels only as last-resort after PIP_INDEX_URL; never required.",
+    "KEEP_VENDOR_WHEELS=1 retains intentionally placed Corporate Package Index-origin wheels during freeze."
+  ],
+  "related_policy": [
+    "/Users/kevinnichols/private-brain-codex/package/config/judge_corporate_library_policy.json",
+    "/Users/kevinnichols/private-brain-codex/CORPORATE_PACKAGE_INDEX.md"
+  ]
+}

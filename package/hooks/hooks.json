@@ -1,0 +1,45 @@
+{
+  "description": "Private Brain sideload \u2014 Codex owns CLI; hooks run RAG-DAG (portable CODEX_HOME)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/kevinnichols/.codex/private-brain/venv/bin/python3 /Users/kevinnichols/.codex/private-brain/hooks/session_start.py",
+            "commandWindows": "cmd /c \"if defined PRIVATE_BRAIN_HOME (if exist \\\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\\\" (\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\" \"%PRIVATE_BRAIN_HOME%\\hooks\\session_start.py\") else if exist \\\"%PRIVATE_BRAIN_HOME%\\hooks\\session_start.py\\\" (py -3 \"%PRIVATE_BRAIN_HOME%\\hooks\\session_start.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\session_start.py\")) else if defined CODEX_HOME (if exist \\\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\" \"%CODEX_HOME%\\private-brain\\hooks\\session_start.py\") else (py -3 \"%CODEX_HOME%\\private-brain\\hooks\\session_start.py\")) else (if exist \\\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\" \"%USERPROFILE%\\.codex\\private-brain\\hooks\\session_start.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\session_start.py\"))\"",
+            "timeout": 120,
+            "statusMessage": "Private Brain RAG-DAG boot"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/kevinnichols/.codex/private-brain/venv/bin/python3 /Users/kevinnichols/.codex/private-brain/hooks/user_prompt_submit.py",
+            "commandWindows": "cmd /c \"if defined PRIVATE_BRAIN_HOME (if exist \\\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\\\" (\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\" \"%PRIVATE_BRAIN_HOME%\\hooks\\user_prompt_submit.py\") else if exist \\\"%PRIVATE_BRAIN_HOME%\\hooks\\user_prompt_submit.py\\\" (py -3 \"%PRIVATE_BRAIN_HOME%\\hooks\\user_prompt_submit.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\user_prompt_submit.py\")) else if defined CODEX_HOME (if exist \\\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\" \"%CODEX_HOME%\\private-brain\\hooks\\user_prompt_submit.py\") else (py -3 \"%CODEX_HOME%\\private-brain\\hooks\\user_prompt_submit.py\")) else (if exist \\\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\" \"%USERPROFILE%\\.codex\\private-brain\\hooks\\user_prompt_submit.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\user_prompt_submit.py\"))\"",
+            "timeout": 180,
+            "statusMessage": "Private Brain retrieve DAG"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/kevinnichols/.codex/private-brain/venv/bin/python3 /Users/kevinnichols/.codex/private-brain/hooks/stop_validate.py",
+            "commandWindows": "cmd /c \"if defined PRIVATE_BRAIN_HOME (if exist \\\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\\\" (\"%PRIVATE_BRAIN_HOME%\\venv\\Scripts\\python.exe\" \"%PRIVATE_BRAIN_HOME%\\hooks\\stop_validate.py\") else if exist \\\"%PRIVATE_BRAIN_HOME%\\hooks\\stop_validate.py\\\" (py -3 \"%PRIVATE_BRAIN_HOME%\\hooks\\stop_validate.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\stop_validate.py\")) else if defined CODEX_HOME (if exist \\\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%CODEX_HOME%\\private-brain\\venv\\Scripts\\python.exe\" \"%CODEX_HOME%\\private-brain\\hooks\\stop_validate.py\") else (py -3 \"%CODEX_HOME%\\private-brain\\hooks\\stop_validate.py\")) else (if exist \\\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\\\" (\"%USERPROFILE%\\.codex\\private-brain\\venv\\Scripts\\python.exe\" \"%USERPROFILE%\\.codex\\private-brain\\hooks\\stop_validate.py\") else (py -3 \"%USERPROFILE%\\.codex\\private-brain\\hooks\\stop_validate.py\"))\"",
+            "timeout": 45,
+            "statusMessage": "Private Brain answer validator"
+          }
+        ]
+      }
+    ]
+  }
+}

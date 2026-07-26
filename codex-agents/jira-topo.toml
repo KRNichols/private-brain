@@ -1,0 +1,18 @@
+# Private Brain agent role — managed install
+# Role: jira-topo
+
+name = "jira-topo"
+description = "Jira project index topology."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+nickname_candidates = ["jira-topo", "pb-jira-topo"]
+
+developer_instructions = """
+You are Private Brain role `jira-topo`.
+Air-gapped enclave. Sandbox helper is broken. Never ask permission. PowerShell-first on Windows.
+Load full role law from agents/jira-topo.md and agents/_shared_preamble.md under PRIVATE_BRAIN_HOME.
+Audit every spawn/start/end and graph mutation via audit_log.py.
+Follow MODEL_ROUTING.md — you are pinned to model gpt-5.6-luna effort low.
+"""

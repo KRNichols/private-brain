@@ -1,0 +1,83 @@
+# Private Brain — {{OS_TITLE}}
+
+**Codex sideload.** One install. Then only talk. No flag dance.
+
+**Mac ≡ Windows** until you drop Corporate `golden_join.json` next to START.
+
+## Picture first (read this)
+
+| File | Who |
+|------|-----|
+| **[`START_HERE.md`](./START_HERE.md)** | **Anyone** + **Senior** entry |
+| **[`DIAGRAM.md`](./DIAGRAM.md)** | One picture · Layer A / Layer B |
+| [`DIAGRAM.txt`](./DIAGRAM.txt) | Notepad-only / mermaid blocked |
+| [`GODSEYE_HELP.md`](./GODSEYE_HELP.md)** | GodsEye: simple + advanced help |
+| [`golden_join.example.json`](./golden_join.example.json) | Empty shell — **await Corporate golden** |
+
+```text
+You talk → brain remembers → Codex answers with proof → GodsEye shows the map
+```
+
+## Install once
+
+1. Quit Codex completely.  
+2. Extract this **`{{OS_FOLDER}}\`** folder (or CORPORATE zip → open **`{{OS_FOLDER}}/`** only).  
+3. Run:
+
+```{{SHELL}}
+{{START_CMD}}
+```
+
+Answer the short map (packages · GitLab · Jira · Confluence · AWS) **or** drop real `golden_join.json` from the Corporate machine (no secrets) next to START for co-worker join — **skips re-interview**.
+
+## Every day
+
+```{{SHELL}}
+beastMode
+```
+
+That is automatic:
+
+| Piece | Behavior |
+|-------|----------|
+| **Beast mode** | Always on (enterprise profile · full access) |
+| **GodsEye** | Opens if packages allow · **close = stays closed** · say `show GodsEye` to reopen |
+| **Sessions** | Auto-ingest from this machine’s Codex sessions |
+| **Heal / metrics / organism** | Run under the floorboards |
+
+## GodsEye (simple)
+
+| Key | Action |
+|-----|--------|
+| drag / scroll | pan / zoom |
+| click | select (floating sheet) |
+| **I** | Inspector (ops rail) |
+| **H** | help (simple ↔ advanced) |
+| **Esc** | close overlay → quit |
+| **Q** | quit |
+
+## Talk only (Codex chat)
+
+| Say | Does |
+|-----|------|
+| normal work | RAG concert + cite-or-block |
+| `normal mode` | RAG **off** |
+| `beast mode` | RAG **on** again |
+| `fire drill` / `doctor` / `heal yourself` / `show metrics` | Forensics |
+| `show golden config` / `add co-worker` | Map / join kit |
+| `day brief` / `phase 2 handoff` | Air-gap MD for Grok |
+| `show GodsEye` | Reopen HUD |
+
+## Models (US sovereign / OpenAI enterprise only)
+
+- Edge: **gpt-5.1** US sovereign (if account allows; else set `PB_EDGE_MODEL` once)  
+- AWS: **enterprise-frontier-model** · **gov-region-1** when SHIM is up  
+- **Do not invent Corporate endpoints** — wait for golden_join from work machine  
+
+## Uninstall
+
+```{{SHELL}}
+{{UNINSTALL_CMD}}
+```
+
+**Never email tokens.** Secrets → secrets store only.

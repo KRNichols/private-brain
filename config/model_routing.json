@@ -1,0 +1,94 @@
+{
+  "schema": "private-brain.model_routing.v2",
+  "sideload_only": true,
+  "note": "Edge Codex may use local slugs today; AWS Government Cloud classes for shim (GSS/Nova). Replace IDs after account enablement.",
+  "available_edge": [
+    {
+      "slug": "gpt-5.1",
+      "display": "GPT-5.1 US Sovereign (edge / Corporate laptop)",
+      "class": "frontier_sovereign",
+      "deprecated": false,
+      "note": "Primary edge model when Grok is unavailable. Confirm exact Codex slug on box."
+    },
+    {
+      "slug": "gpt-5.6-terra",
+      "display": "GPT-5.6-Terra",
+      "class": "balanced",
+      "deprecated": false,
+      "note": "Fallback if gpt-5.1 slug not enabled on account"
+    },
+    {
+      "slug": "gpt-5.6-luna",
+      "display": "GPT-5.6-Luna",
+      "class": "fast_cheap",
+      "deprecated": false
+    },
+    {
+      "slug": "gpt-5.5",
+      "display": "GPT-5.5",
+      "class": "frontier",
+      "deprecated": false
+    }
+  ],
+  "available_aws_govcloud": [
+    {
+      "slug": "enterprise-frontier-model",
+      "display": "OpenAI GSS 120B",
+      "class": "frontier_general",
+      "region": "gov-region-1",
+      "via": "ssm_localhost_shim",
+      "deprecated": false
+    },
+    {
+      "slug": "nova-pro",
+      "display": "Amazon Nova Pro",
+      "class": "balanced",
+      "region": "gov-region-1",
+      "via": "ssm_localhost_shim_or_bedrock",
+      "deprecated": false
+    },
+    {
+      "slug": "nova-mini",
+      "display": "Amazon Nova Mini",
+      "class": "fast_cheap",
+      "region": "gov-region-1",
+      "via": "ssm_localhost_shim_or_bedrock",
+      "deprecated": false
+    }
+  ],
+  "routing_edge": {
+    "orchestrator": { "model": "gpt-5.1", "effort": "high" },
+    "retriever": { "model": "gpt-5.1", "effort": "medium" },
+    "graph-writer": { "model": "gpt-5.1", "effort": "medium" },
+    "auditor": { "model": "gpt-5.1", "effort": "high" },
+    "watcher": { "model": "gpt-5.6-luna", "effort": "low", "prefer_script": true },
+    "gitlab-topo": { "model": "gpt-5.6-luna", "effort": "low" },
+    "jira-topo": { "model": "gpt-5.6-luna", "effort": "low" },
+    "confluence-topo": { "model": "gpt-5.6-luna", "effort": "low" },
+    "gitlab-deep": { "model": "gpt-5.1", "effort": "medium" },
+    "jira-deep": { "model": "gpt-5.1", "effort": "medium" },
+    "confluence-deep": { "model": "gpt-5.1", "effort": "medium" },
+    "hard-synthesis": { "model": "gpt-5.1", "effort": "xhigh" },
+    "code_assistant": { "model": "gpt-5.1", "effort": "high" },
+    "planning_assistant": { "model": "gpt-5.1", "effort": "high" },
+    "technical_documentor": { "model": "gpt-5.1", "effort": "medium" }
+  },
+  "routing_aws_when_shim": {
+    "orchestrator": { "model": "enterprise-frontier-model", "effort": "high" },
+    "code_assistant": { "model": "enterprise-frontier-model", "effort": "high" },
+    "planning_assistant": { "model": "nova-pro", "effort": "high" },
+    "technical_documentor": { "model": "nova-pro", "effort": "medium" },
+    "retriever": { "model": "nova-pro", "effort": "medium" },
+    "synthesizer": { "model": "nova-pro", "effort": "medium" },
+    "watcher": { "model": "nova-mini", "effort": "low" },
+    "gitlab-topo": { "model": "nova-mini", "effort": "low" },
+    "jira-topo": { "model": "nova-mini", "effort": "low" },
+    "confluence-topo": { "model": "nova-mini", "effort": "low" },
+    "hard-synthesis": { "model": "enterprise-frontier-model", "effort": "xhigh" }
+  },
+  "shim_env": {
+    "PB_LLM_BASE_URL": "http://127.0.0.1:8443/v1",
+    "PB_AWS_REGION": "gov-region-1",
+    "note": "Set after aws ssm start-session port-forward"
+  }
+}

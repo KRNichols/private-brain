@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  ONE Day-1 instruction script — Private Brain Codex SIDELOAD only
+# =============================================================================
+#  You never run a separate Private Brain product CLI.
+#  Codex owns the model session. This script:
+#    0) Config-of-config (scripted inventory of agents/AppGate/AWS/SSM already on board)
+#    1) Intelligent Day-1 map using that board (Corporate Library | AWS | headless)
+#    2) Installs/heals the sideload under ~/.codex
+#    3) Optionally polite multi-agent recursive crawl of INTERNAL sources
+#       (GitLab · Jira · Confluence — typically behind AppGate)
+#    4) Doctor + quarantine ops hygiene
+#
+#  Usage:
+#    ./DAY1
+#    ./DAY1 --yes --route corporate-library --program MyProgram
+#    ./DAY1 --yes --route aws --program MyProgram \
+#          --gitlab https://gitlab.corp/group \
+#          --jira https://jira.corp \
+#          --confluence https://confluence.corp/wiki
+#    ./DAY1 --crawl-only   # sources already configured in env
+#
+#  Windows: use DAY1.ps1 in the windows/ kit folder (same contract).
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Kit root: package/scripts → kit ; or live ~/.codex/private-brain/scripts
+if [[ -f "$SCRIPT_DIR/../SETUP.command" ]]; then
+  KIT="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [[ -f "$SCRIPT_DIR/../../SETUP.command" ]]; then
+  KIT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+else
+  KIT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
+export PB_KIT_ROOT="${PB_KIT_ROOT:-$KIT}"
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+export PRIVATE_BRAIN_HOME="${PRIVATE_BRAIN_HOME:-$CODEX_HOME/private-brain}"
+export PATH="$HOME/bin:/Applications/ChatGPT.app/Contents/Resources:${PATH:-}"
+export PB_ENTERPRISE=1
+
+# ── parse args (pass-through to day1_first_start + crawl) ──────────
+CRAWL_ONLY=0
+SKIP_CRAWL=0
+YES=0
+GITLAB_URL="${PB_GITLAB_URL:-}"
+JIRA_URL="${PB_JIRA_URL:-}"
+CONF_URL="${PB_CONFLUENCE_URL:-}"
+DAY1_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --crawl-only) CRAWL_ONLY=1; shift ;;
+    --skip-crawl) SKIP_CRAWL=1; shift ;;
+    --gitlab) GITLAB_URL="${2:-}"; DAY1_ARGS+=(--ingest-url "${2:-}"); shift 2 ;;
+    --gitlab=*) GITLAB_URL="${1#*=}"; shift ;;
+    --jira) JIRA_URL="${2:-}"; shift 2 ;;
+    --jira=*) JIRA_URL="${1#*=}"; shift ;;
+    --confluence) CONF_URL="${2:-}"; shift 2 ;;
+    --confluence=*) CONF_URL="${1#*=}"; shift ;;
+    --yes|-y) YES=1; DAY1_ARGS+=(--yes); shift ;;
+    -h|--help)
+      sed -n '2,30p' "$0" | sed 's/^# \?//'
+      exit 0
+      ;;
+    *) DAY1_ARGS+=("$1"); shift ;;
+  esac
+done
+
+echo "=============================================="
+echo " Private Brain — DAY1 (Codex sideload only)"
+echo "=============================================="
+echo " CODEX_HOME=$CODEX_HOME"
+echo " PRIVATE_BRAIN_HOME=$PRIVATE_BRAIN_HOME"
+echo " KIT=$KIT"
+echo " Sources (AppGate-protected typical):"
+echo "   GitLab:     ${GITLAB_URL:-(not set)}"
+echo "   Jira:       ${JIRA_URL:-(not set)}"
+echo "   Confluence: ${CONF_URL:-(not set)}"
+echo
+
+PY="$(command -v python3 || true)"
+[[ -x "$PRIVATE_BRAIN_HOME/venv/bin/python3" ]] && PY="$PRIVATE_BRAIN_HOME/venv/bin/python3"
+if [[ -z "$PY" ]]; then
+  echo "ERROR: python3 required (3.10+)" >&2
+  exit 1
+fi
+
+DAY1_PY="$SCRIPT_DIR/day1_first_start.py"
+[[ -f "$DAY1_PY" ]] || DAY1_PY="$PRIVATE_BRAIN_HOME/scripts/day1_first_start.py"
+[[ -f "$DAY1_PY" ]] || DAY1_PY="$KIT/package/scripts/day1_first_start.py"
+
+if [[ "$CRAWL_ONLY" != "1" ]]; then
+  echo "==> [0/6] Config-of-config (scripted board BEFORE intelligent analysis)"
+  COC_PY="$SCRIPT_DIR/config_of_config.py"
+  [[ -f "$COC_PY" ]] || COC_PY="$PRIVATE_BRAIN_HOME/scripts/config_of_config.py"
+  SUGGEST_ROUTE=""
+  if [[ -f "$COC_PY" ]]; then
+    set +e
+    COC_OUT="$("$PY" "$COC_PY" 2>&1)"
+    COC_RC=$?
+    set -e
+    echo "$COC_OUT" | tail -30
+    SUGGEST_ROUTE="$(echo "$COC_OUT" | sed -n 's/^COC_ROUTE=//p' | tail -1)"
+    if [[ "$COC_RC" -ne 0 ]]; then
+      echo "WARN: config_of_config rc=$COC_RC — continuing with Day-1 intelligence" >&2
+    fi
+    # If user did not pass --route, feed scripted suggestion into intelligent map
+    has_route=0
+    for a in "${DAY1_ARGS[@]+"${DAY1_ARGS[@]}"}"; do
+      [[ "$a" == "--route" || "$a" == --route=* ]] && has_route=1
+    done
+    if [[ "$has_route" -eq 0 && -n "$SUGGEST_ROUTE" ]]; then
+      DAY1_ARGS+=(--route "$SUGGEST_ROUTE")
+      echo "    scripted route suggestion → --route $SUGGEST_ROUTE"
+    fi
+    export PB_CONFIG_OF_CONFIG_JSON="${PRIVATE_BRAIN_HOME}/.brain/state/config_of_config.json"
+  else
+    echo "WARN: config_of_config.py missing — skip preflight board" >&2
+  fi
+
+  echo "==> [1/6] Intelligent Day-1 map (max user input → homes → configure)"
+  set +e
+  DAY1_OUT="$("$PY" "$DAY1_PY" "${DAY1_ARGS[@]}" 2>&1)"
+  DAY1_RC=$?
+  set -e
+  echo "$DAY1_OUT"
+  if [[ "$DAY1_RC" -ne 0 ]]; then
+    echo "ERROR: day1_first_start failed (rc=$DAY1_RC)" >&2
+    exit "$DAY1_RC"
+  fi
+  # adopt homes discovered/confirmed by interview
+  NEW_CODEX="$(echo "$DAY1_OUT" | sed -n 's/^DAY1_CODEX_HOME=//p' | tail -1)"
+  NEW_BRAIN="$(echo "$DAY1_OUT" | sed -n 's/^DAY1_BRAIN_HOME=//p' | tail -1)"
+  [[ -n "$NEW_CODEX" ]] && export CODEX_HOME="$NEW_CODEX"
+  [[ -n "$NEW_BRAIN" ]] && export PRIVATE_BRAIN_HOME="$NEW_BRAIN"
+  GL_FROM="$(echo "$DAY1_OUT" | sed -n 's/^DAY1_GITLAB=//p' | tail -1)"
+  JR_FROM="$(echo "$DAY1_OUT" | sed -n 's/^DAY1_JIRA=//p' | tail -1)"
+  CF_FROM="$(echo "$DAY1_OUT" | sed -n 's/^DAY1_CONFLUENCE=//p' | tail -1)"
+  [[ -n "$GL_FROM" && -z "$GITLAB_URL" ]] && GITLAB_URL="$GL_FROM"
+  [[ -n "$JR_FROM" && -z "$JIRA_URL" ]] && JIRA_URL="$JR_FROM"
+  [[ -n "$CF_FROM" && -z "$CONF_URL" ]] && CONF_URL="$CF_FROM"
+  echo "    home → CODEX_HOME=$CODEX_HOME"
+  echo "    home → PRIVATE_BRAIN_HOME=$PRIVATE_BRAIN_HOME"
+  # load env from the chosen brain home
+  for envf in "$PRIVATE_BRAIN_HOME/day1.env" "$KIT/day1.env" "$PWD/day1.env"; do
+    if [[ -f "$envf" ]]; then
+      # shellcheck disable=SC1090
+      set +u; source "$envf"; set -u
+      echo "    loaded $envf"
+      break
+    fi
+  done
+  export PB_ENTERPRISE=1
+  export CODEX_HOME PRIVATE_BRAIN_HOME
+
+  echo "==> [2/6] SETUP if needed (sideload into Codex — not a product CLI)"
+  need=0
+  [[ -f "$PRIVATE_BRAIN_HOME/scripts/orchestrate.py" ]] || need=1
+  [[ -f "$CODEX_HOME/hooks.json" ]] || need=1
+  if [[ "$need" == "1" ]]; then
+    if [[ -f "$KIT/SETUP.command" ]]; then
+      bash "$KIT/SETUP.command" || true
+    elif [[ -f "$KIT/SETUP.ps1" ]] && command -v pwsh >/dev/null 2>&1; then
+      pwsh -NoProfile -File "$KIT/SETUP.ps1" || true
+    else
+      # live tree already is the install target — ensure hooks
+      export PYTHONPATH="$PRIVATE_BRAIN_HOME/scripts:$PRIVATE_BRAIN_HOME"
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/install_hooks.py" 2>/dev/null || true
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/brain_init.py" 2>/dev/null || true
+    fi
+  fi
+
+  BM="$HOME/bin/beastMode"
+  [[ -x "$BM" ]] || BM="$PRIVATE_BRAIN_HOME/scripts/beastMode"
+  if [[ ! -x "$BM" ]]; then
+    mkdir -p "$HOME/bin"
+    cp -f "$PRIVATE_BRAIN_HOME/scripts/beastMode" "$HOME/bin/beastMode" 2>/dev/null || true
+    chmod +x "$HOME/bin/beastMode" 2>/dev/null || true
+    BM="$HOME/bin/beastMode"
+  fi
+  export PATH="$HOME/bin:$PATH"
+
+  echo "==> [3/7] sessions first (local gold) + enterprise heal + doctor"
+  set +e
+  # Sessions BEFORE internal crawl — no AppGate required
+  PYTHONPATH="$PRIVATE_BRAIN_HOME/scripts:$PRIVATE_BRAIN_HOME" \
+    "$PY" -c "from smart_discover import run_discover_ingest; import json; print(json.dumps(run_discover_ingest(max_files=400, force=False, agent_id='day1-sessions'), default=str)[:500])" 2>/dev/null || true
+  "$BM" --enterprise --heal
+  "$BM" --enterprise --doctor
+  DOC=$?
+  set -e
+  if [[ "$DOC" -ne 0 ]]; then
+    "$BM" --enterprise --heal || true
+    "$BM" --enterprise --doctor || true
+  fi
+  echo "==> [3b/7] Monday mission zero-fail gates (MISSION_MONDAY.md)"
+  PYTHONPATH="$PRIVATE_BRAIN_HOME/scripts:$PRIVATE_BRAIN_HOME" \
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/mission_monday.py" 2>/dev/null || \
+    PYTHONPATH="$PRIVATE_BRAIN_HOME/scripts:$PRIVATE_BRAIN_HOME" \
+    "$PY" "$SCRIPT_DIR/mission_monday.py" 2>/dev/null || true
+else
+  BM="$HOME/bin/beastMode"
+  [[ -x "$BM" ]] || BM="$PRIVATE_BRAIN_HOME/scripts/beastMode"
+  for envf in "$PRIVATE_BRAIN_HOME/day1.env" "$KIT/day1.env"; do
+    [[ -f "$envf" ]] && set +u && source "$envf" && set -u && break
+  done
+  export PB_ENTERPRISE=1
+fi
+
+if [[ "$SKIP_CRAWL" != "1" ]]; then
+  if [[ -n "${GITLAB_URL}${JIRA_URL}${CONF_URL}" ]]; then
+    echo "==> [4/6] Polite multi-agent recursive crawl (internal only)"
+    echo "    AppGate must already allow this shell to reach corporate hosts."
+    export PYTHONPATH="$PRIVATE_BRAIN_HOME/scripts:$PRIVATE_BRAIN_HOME${PYTHONPATH:+:$PYTHONPATH}"
+    CRAWL_ARGS=(--deep --agents "${PB_CRAWL_AGENTS:-6}")
+    [[ -n "$GITLAB_URL" ]] && CRAWL_ARGS+=(--gitlab "$GITLAB_URL")
+    [[ -n "$JIRA_URL" ]] && CRAWL_ARGS+=(--jira "$JIRA_URL")
+    [[ -n "$CONF_URL" ]] && CRAWL_ARGS+=(--confluence "$CONF_URL")
+    set +e
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/internal_crawl_swarm.py" "${CRAWL_ARGS[@]}"
+    CRAWL_RC=$?
+    set -e
+    if [[ "$CRAWL_RC" -ne 0 ]]; then
+      echo "WARN: crawl partial/fail (rc=$CRAWL_RC) — check AppGate session + tokens" >&2
+    fi
+    # reindex after writers
+    "$PY" -c "from vector_manager import reindex_all; print(reindex_all())" 2>/dev/null || true
+  else
+    echo "==> [4/6] No --gitlab/--jira/--confluence — skip crawl"
+    echo "    Later: DAY1 --crawl-only --gitlab URL --jira URL --confluence URL"
+  fi
+else
+  echo "==> [4/6] --skip-crawl"
+fi
+
+echo "==> [5/6] Quarantine public hosts + doctor"
+set +e
+"$BM" --enterprise --quarantine-public 2>/dev/null
+"$BM" --enterprise --doctor
+set -e
+
+echo
+echo "=============================================="
+echo " DAY1 COMPLETE — Codex sideload ready"
+echo "=============================================="
+echo " Launch:  source ${PRIVATE_BRAIN_HOME}/day1.env"
+echo "          beastMode --enterprise"
+echo " Roles:   code · plan · docs · retrieve · audit (agents/ board)"
+echo " Crawl:   DAY1 --crawl-only --gitlab … --jira … --confluence …"
+echo " Board:   $PRIVATE_BRAIN_HOME/.brain/state/config_of_config.json"
+echo " Map:     $PRIVATE_BRAIN_HOME/.brain/state/day1_map.json"
+echo " AWS:     APPGATE_AWS_GOVCLOUD.md · SSM localhost shim"
+echo "=============================================="
+exit 0

@@ -1,0 +1,146 @@
+# Prove Windows kit extract → START path (Corporate first approach)
+name: Windows first-boot
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "scripts/**"
+      - "installers/**"
+      - "package/**"
+      - "hooks/**"
+      - ".github/workflows/windows-first-boot.yml"
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  windows-ready-smoke:
+    name: windows-latest READY smoke
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Freeze dual-OS kit (or skip if freeze missing)
+        shell: bash
+        env:
+          PB_ENTERPRISE: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          if [ -x scripts/freeze_for_corporate ]; then
+            bash scripts/freeze_for_corporate
+          elif [ -f scripts/freeze_for_corporate ]; then
+            bash scripts/freeze_for_corporate
+          else
+            echo "freeze_for_corporate not in tree yet — skip freeze"
+            mkdir -p dist
+          fi
+
+      - name: Prefer WINDOWS-READY artifact
+        shell: bash
+        id: kit
+        run: |
+          set -e
+          if ls dist/PrivateBrain-WINDOWS-READY.zip 1>/dev/null 2>&1; then
+            echo "zip=dist/PrivateBrain-WINDOWS-READY.zip" >> "$GITHUB_OUTPUT"
+          elif ls dist/PrivateBrain-CORPORATE-*.zip 1>/dev/null 2>&1; then
+            Z=$(ls -t dist/PrivateBrain-CORPORATE-*.zip | head -1)
+            echo "zip=$Z" >> "$GITHUB_OUTPUT"
+            echo "mode=corporate" >> "$GITHUB_OUTPUT"
+          else
+            echo "No kit zip — fail closed when engine present"
+            if [ -d scripts ]; then exit 1; fi
+            echo "zip=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract kit on Windows
+        if: steps.kit.outputs.zip != ''
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.kit.outputs.zip }}"
+          New-Item -ItemType Directory -Force -Path kit | Out-Null
+          Expand-Archive -Path $zip -DestinationPath kit_raw -Force
+          # WINDOWS-READY is flat; CORPORATE has windows/ subfolder
+          if (Test-Path "kit_raw\windows\README.md") {
+            Copy-Item -Recurse -Force "kit_raw\windows\*" kit\
+          } elseif (Test-Path "kit_raw\README.md") {
+            Copy-Item -Recurse -Force "kit_raw\*" kit\
+          } else {
+            $inner = Get-ChildItem kit_raw -Directory | Select-Object -First 1
+            if ($inner -and (Test-Path (Join-Path $inner.FullName "windows"))) {
+              Copy-Item -Recurse -Force (Join-Path $inner.FullName "windows\*") kit\
+            } else {
+              Get-ChildItem kit_raw -Recurse | Select-Object -First 30 FullName
+              throw "Could not locate windows kit root"
+            }
+          }
+          Write-Host "=== kit root ==="
+          Get-ChildItem kit | ForEach-Object { $_.Name }
+          $root = Get-ChildItem kit -Name
+          if ($root -notcontains "README.md") { throw "missing README.md" }
+          if ($root -notcontains "DIAGRAM.md") { throw "missing DIAGRAM.md" }
+          if ($root -notcontains "tools") { throw "missing tools/" }
+
+      - name: START.ps1 headless (no open Codex)
+        if: steps.kit.outputs.zip != ''
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass
+          $env:PB_ENTERPRISE = "1"
+          $env:PB_NONINTERACTIVE = "1"
+          $env:PB_NO_OPEN_CODEX = "1"
+          $env:PB_GODSEYE = "0"
+          cd kit
+          if (-not (Test-Path ".\tools\install\START.ps1")) {
+            throw "tools\install\START.ps1 missing"
+          }
+          # -Yes -Route headless if supported
+          try {
+            .\tools\install\START.ps1 -Yes -Route headless -NoGodsEye
+          } catch {
+            .\tools\install\START.ps1
+          }
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
+            throw "START.ps1 exit $LASTEXITCODE"
+          }
+
+      - name: Assert sideload wired
+        if: steps.kit.outputs.zip != ''
+        shell: pwsh
+        run: |
+          $codex = Join-Path $env:USERPROFILE ".codex"
+          $hooks = Join-Path $codex "hooks.json"
+          $brain = Join-Path $codex "private-brain"
+          $prof = Join-Path $codex "beast-enterprise.config.toml"
+          if (-not (Test-Path $hooks)) { throw "hooks.json missing after START" }
+          if (-not (Test-Path (Join-Path $brain "scripts\organism.py"))) {
+            if (-not (Test-Path (Join-Path $brain "scripts\orchestrate.py"))) {
+              throw "brain scripts missing after START"
+            }
+          }
+          if (Test-Path $prof) {
+            $t = Get-Content -Raw $prof
+            if ($t -notmatch "danger-full-access") { throw "profile missing danger-full-access" }
+            if ($t -notmatch "never") { throw "profile missing approval never" }
+            Write-Host "OK danger-full-access profile"
+          } else {
+            Write-Warning "beast-enterprise.config.toml missing (soft if hooks-only path)"
+          }
+          Write-Host "OK Windows first-boot smoke"
+
+      - name: Upload WINDOWS-READY
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ready-${{ github.sha }}
+          path: |
+            dist/PrivateBrain-WINDOWS-READY.zip
+            dist/PrivateBrain-WINDOWS-READY.sha256
+            dist/READY.sha256
+          if-no-files-found: warn

@@ -1,0 +1,1386 @@
+#!/usr/bin/env bash
+# Private Brain — thin Codex sideload launcher (NOT a separate product CLI).
+#
+# End users never run Python. Features are toggled by ARGUMENTS / env, then we
+# exec codex (or exit after --ingest-only).
+#
+#   beastMode                         # headless beast (default)
+#   beastMode -GodsEye                # + live GUI (GodsEye)
+#   beastMode --godseye --swarm 32    # GUI + 32-agent shared-graph swarm
+#   beastMode --swarm 16              # swarm without GUI
+#   beastMode --nuclear               # danger-full-access extra flag
+#   beastMode -ingestion URL          # polite recursive GitLab crawl → graph
+#   beastMode -ingestion URL --max    # DEEP + generous limits (still rate-limited)
+#   beastMode -ingestion gnome        # preset shortcut (gnome|salsa|gitlab|freexian)
+#   beastMode --preset salsa --max    # same via --preset
+#   beastMode -ingestion URL --ingest-only
+#   beastMode --doctor                # health check → READY / FAIL (no codex)
+#   beastMode --enterprise            # Corporate pilot profile (no public OSS, hard audit/cites)
+#   beastMode --enterprise --sap-pack # SAP evidence zip under .brain/audit/packs/
+#   beastMode --enterprise --heal     # self-recover profile/chain/vectors/snapshot
+#
+# Equivalent pure-codex forms:
+#   codex --dangerously-bypass-hook-trust -p beast
+#   codex --dangerously-bypass-hook-trust -p beast-godseye   # profile only — GUI needs beastMode -GodsEye
+
+set -euo pipefail
+
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+export PRIVATE_BRAIN_HOME="${PRIVATE_BRAIN_HOME:-$CODEX_HOME/private-brain}"
+export PATH="/Applications/ChatGPT.app/Contents/Resources:${PATH:-}"
+# Keep heal/doctor JSON pipes clean (pygame support banner)
+export PYGAME_HIDE_SUPPORT_PROMPT="${PYGAME_HIDE_SUPPORT_PROMPT:-1}"
+
+# Defaults — ORGANISM always-on (water pipe). Not a flag dance.
+# beastMode alone = enterprise + max agents + GodsEye prefer-on + water_pipe then Codex.
+export PB_ENTERPRISE="${PB_ENTERPRISE:-1}"
+export PB_GODSEYE="${PB_GODSEYE:-1}"
+# max agents: 0/empty/auto → organism computes min(256, cpu*8)
+export PB_SWARM_AGENTS="${PB_SWARM_AGENTS:-auto}"
+export PB_MAX_AGENTS="${PB_MAX_AGENTS:-auto}"
+export PB_AWS_REGION="${PB_AWS_REGION:-gov-region-1}"
+PROFILE="beast-enterprise"
+ENTERPRISE=1
+EXTRA_CODEX=()
+PASSTHRU=()
+INGEST_URL=""
+INGEST_PRESET=""
+INGEST_MAX=0
+INGEST_ONLY=0
+INGEST_SHALLOW=0
+INGEST_MAX_PROJECTS=""
+INGEST_EXTRA=()
+SYNC_MEMORY=0
+NOTE_TEXT=""
+AUTO_SYNC=1
+DOCTOR=0
+# ENTERPRISE already 1 by default (always-on organism)
+SAP_PACK=0
+HEAL=0
+PURITY_AUDIT=0
+QUARANTINE_PUBLIC=0
+VALIDATE_ENTERPRISE=0
+MISSION=0
+FIRE_DRILL=0
+OPS_METRICS=0
+AUTOPILOT=0
+NO_AUTOPILOT=0
+SHOW_GODSEYE=0
+# LOOP→GRAPH→HARNESS pipeline (offline demo / brain fan-out / tests)
+PIPELINE_MODE=""
+# Never-forget second mind
+NEVER_FORGET_INIT=0
+INTERVIEW=0
+ORGANIZE=0
+PROJECT_NAME=""
+PROJECT_GOAL=""
+SKILL_NAME=""
+SKILL_BODY=""
+EXIT_AFTER_FEATURE=0
+
+KNOWN_PRESETS="gnome|salsa|gitlab|freexian"
+
+is_preset() {
+  case "$1" in
+    gnome|salsa|gitlab|freexian) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -GodsEye|--GodsEye|--godseye|-godseye)
+      export PB_GODSEYE=1
+      # TRUE OpenGL by default (graph_gl.py + PyOpenGL). Override: PB_GODSEYE_BACKEND=cpu
+      export PB_GODSEYE_BACKEND="${PB_GODSEYE_BACKEND:-gl}"
+      PROFILE="beast-godseye"
+      shift
+      ;;
+    --GodsEye-cpu|--godseye-cpu|--gui-cpu)
+      export PB_GODSEYE=1
+      export PB_GODSEYE_BACKEND=cpu
+      PROFILE="beast-godseye"
+      shift
+      ;;
+    --no-gui|--headless)
+      export PB_GODSEYE=0
+      PROFILE="beast"
+      shift
+      ;;
+    --swarm)
+      export PB_SWARM_AGENTS="${2:-32}"
+      shift 2
+      ;;
+    --swarm=*)
+      export PB_SWARM_AGENTS="${1#*=}"
+      shift
+      ;;
+    -ingestion|--ingestion|--ingest)
+      val="${2:-}"
+      if [[ -z "$val" ]]; then
+        echo "beastMode: -ingestion requires a URL or preset (gnome|salsa|gitlab|freexian)" >&2
+        exit 2
+      fi
+      if is_preset "$val"; then
+        INGEST_PRESET="$val"
+      else
+        INGEST_URL="$val"
+      fi
+      shift 2
+      ;;
+    -ingestion=*|--ingestion=*|--ingest=*)
+      val="${1#*=}"
+      if is_preset "$val"; then
+        INGEST_PRESET="$val"
+      else
+        INGEST_URL="$val"
+      fi
+      shift
+      ;;
+    --preset)
+      INGEST_PRESET="${2:-}"
+      if [[ -z "$INGEST_PRESET" ]]; then
+        echo "beastMode: --preset requires name: $KNOWN_PRESETS" >&2
+        exit 2
+      fi
+      if ! is_preset "$INGEST_PRESET"; then
+        echo "beastMode: unknown preset '$INGEST_PRESET' (want $KNOWN_PRESETS)" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --preset=*)
+      INGEST_PRESET="${1#*=}"
+      if ! is_preset "$INGEST_PRESET"; then
+        echo "beastMode: unknown preset '$INGEST_PRESET' (want $KNOWN_PRESETS)" >&2
+        exit 2
+      fi
+      shift
+      ;;
+    --max|--max-ingest)
+      INGEST_MAX=1
+      shift
+      ;;
+    -colonoscopy|--colonoscopy)
+      # Alias: -ingestion URL --max (full-depth polite harvest)
+      val="${2:-}"
+      if [[ -z "$val" ]]; then
+        echo "beastMode: -colonoscopy requires a URL or preset" >&2
+        exit 2
+      fi
+      if is_preset "$val"; then
+        INGEST_PRESET="$val"
+      else
+        INGEST_URL="$val"
+      fi
+      INGEST_MAX=1
+      shift 2
+      ;;
+    --shallow)
+      INGEST_SHALLOW=1
+      shift
+      ;;
+    --max-projects)
+      INGEST_MAX_PROJECTS="${2:-}"
+      if [[ -z "$INGEST_MAX_PROJECTS" ]]; then
+        echo "beastMode: --max-projects requires N" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --max-projects=*)
+      INGEST_MAX_PROJECTS="${1#*=}"
+      shift
+      ;;
+    --ingest-only)
+      # run ingestion and exit (no codex) — still sideload tooling, not a product CLI
+      INGEST_ONLY=1
+      shift
+      ;;
+    --sync-memory|--sync-boss|--distill-sync)
+      # one markdown vault → Codex skills + AGENTS (stop re-explaining yourself)
+      SYNC_MEMORY=1
+      shift
+      ;;
+    --note)
+      NOTE_TEXT="${2:-}"
+      if [[ -z "$NOTE_TEXT" ]]; then
+        echo "beastMode: --note needs text (what worked / tell past-self)" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --note=*)
+      NOTE_TEXT="${1#*=}"
+      shift
+      ;;
+    --no-auto-sync)
+      AUTO_SYNC=0
+      shift
+      ;;
+    --enterprise|-enterprise)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      PROFILE="beast-enterprise"
+      # enterprise defaults: headless, no nuclear, swarm off unless user set it
+      export PB_GODSEYE="${PB_GODSEYE:-0}"
+      shift
+      ;;
+    --sap-pack|--sap|--audit-pack)
+      SAP_PACK=1
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --heal|--self-heal|--repair)
+      # Self-heal does NOT force enterprise — home heals free; Corporate uses --enterprise --heal
+      HEAL=1
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --purity-audit|--corpus-purity)
+      # reproducible public-host purity report (enterprise)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      PURITY_AUDIT=1
+      shift
+      ;;
+    --quarantine-public)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      QUARANTINE_PUBLIC=1
+      shift
+      ;;
+    --validate-enterprise|--e2e-enterprise)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      VALIDATE_ENTERPRISE=1
+      shift
+      ;;
+    --day1|--DAY1)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      RUN_DAY1=1
+      shift
+      ;;
+    --mission|--monday|--zero-fail)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      MISSION=1
+      shift
+      ;;
+    --fire-drill|--firedrill|--airtight)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      FIRE_DRILL=1
+      shift
+      ;;
+    --metrics|--ops-metrics)
+      EXIT_AFTER_FEATURE=1
+      OPS_METRICS=1
+      shift
+      ;;
+    --autopilot|--alive|--wake|--organism|--water-pipe)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      AUTOPILOT=1
+      shift
+      ;;
+    --no-autopilot|--no-organism)
+      NO_AUTOPILOT=1
+      export PB_AUTOPILOT=0
+      shift
+      ;;
+    --show-godseye|--godseye-show)
+      export PB_GODSEYE=1
+      export PB_GODSEYE_FORCE=1
+      EXIT_AFTER_FEATURE=1
+      SHOW_GODSEYE=1
+      shift
+      ;;
+    --config-of-config|--coc|--board)
+      ENTERPRISE=1
+      export PB_ENTERPRISE=1
+      EXIT_AFTER_FEATURE=1
+      CONFIG_OF_CONFIG=1
+      shift
+      ;;
+    --capabilities|--caps)
+      EXIT_AFTER_FEATURE=1
+      CAPABILITIES=1
+      shift
+      ;;
+    --nuclear)
+      if [[ "${PB_ENTERPRISE:-0}" == "1" || "$ENTERPRISE" == "1" ]]; then
+        echo "beastMode: --nuclear blocked in enterprise mode" >&2
+        exit 2
+      fi
+      EXTRA_CODEX+=(--dangerously-bypass-approvals-and-sandbox)
+      shift
+      ;;
+    --no-lgh)
+      # disable LOOP→GRAPH→HARNESS fan-out inside concert
+      export PB_LGH=0
+      shift
+      ;;
+    --lgh-concert)
+      export PB_LGH=1
+      export PB_LGH_WITH_SWARM=1
+      shift
+      ;;
+    -p|--profile)
+      # allow override but keep beast default
+      PROFILE="${2:-beast}"
+      shift 2
+      ;;
+    --doctor|-doctor)
+      # handled after env resolve (needs CODEX_HOME / PRIVATE_BRAIN_HOME)
+      DOCTOR=1
+      shift
+      ;;
+    --pipeline|--lgh)
+      # LOOP→GRAPH→HARNESS: demo | brain | test  (default demo; exits, no codex)
+      if [[ "${2:-}" == "demo" || "${2:-}" == "brain" || "${2:-}" == "test" ]]; then
+        PIPELINE_MODE="$2"
+        shift 2
+      else
+        PIPELINE_MODE="demo"
+        shift
+      fi
+      EXIT_AFTER_FEATURE=1
+      ;;
+    --pipeline=*|--lgh=*)
+      PIPELINE_MODE="${1#*=}"
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --never-forget-init|--second-mind-init)
+      NEVER_FORGET_INIT=1
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --interview)
+      INTERVIEW=1
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --organize|--autopilot)
+      ORGANIZE=1
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --project)
+      PROJECT_NAME="${2:-}"
+      if [[ -z "$PROJECT_NAME" ]]; then
+        echo "beastMode: --project needs a name" >&2
+        exit 2
+      fi
+      shift 2
+      EXIT_AFTER_FEATURE=1
+      ;;
+    --project=*)
+      PROJECT_NAME="${1#*=}"
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --goal)
+      PROJECT_GOAL="${2:-}"
+      shift 2
+      ;;
+    --goal=*)
+      PROJECT_GOAL="${1#*=}"
+      shift
+      ;;
+    --skill)
+      SKILL_NAME="${2:-}"
+      if [[ -z "$SKILL_NAME" ]]; then
+        echo "beastMode: --skill needs a name" >&2
+        exit 2
+      fi
+      shift 2
+      EXIT_AFTER_FEATURE=1
+      ;;
+    --skill=*)
+      SKILL_NAME="${1#*=}"
+      EXIT_AFTER_FEATURE=1
+      shift
+      ;;
+    --skill-body)
+      SKILL_BODY="${2:-}"
+      shift 2
+      ;;
+    --skill-body=*)
+      SKILL_BODY="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Private Brain sideload launcher → always ends in: codex -p <profile>
+
+  beastMode [features] [codex args...]
+
+You never run Python. Only beastMode / SETUP / UNINSTALL.
+This is a Codex sideload — NOT a separate product CLI.
+
+Features (arguments — all optional, default OFF):
+  -GodsEye | --godseye       TRUE OpenGL GodsEye (pygame + PyOpenGL)
+  --GodsEye-cpu              Software pygame dashboard (live_gui) instead of GL
+  --no-gui                   Force headless (default)
+  --swarm N | --swarm=N      Shared-topology multi-agent sweep (e.g. 32)
+  -ingestion URL|PRESET      GitLab URL or preset → recursive knowledge harvest
+  -colonoscopy URL|PRESET    Same as -ingestion … --max (full tree tear-down)
+  --max                      DEEP + generous capture limits (still polite)
+  --shallow / --max-projects N   Smoke / faster harvest
+  --ingest-only              Harvest then exit (no Codex)
+  --sync-memory              Distill vault → Codex skills/AGENTS (the "boss brain")
+  --note "text"              Daily distill: what worked / tell past-self
+  --no-auto-sync             Skip auto skill sync on launch
+  --nuclear                  Extra danger-full-access on codex (blocked under --enterprise)
+  --enterprise               Corporate/corporate mode: beast-enterprise profile, no public OSS
+  --sap-pack                 Write SAP evidence zip (.brain/audit/packs/) then exit
+  --heal                     Self-recover: capabilities + profile + tree + chain + vectors + snapshot
+                             (home: free optional pip; Corporate: set --enterprise + PIP_INDEX_URL or degrade)
+  --capabilities             Probe optional modules / GPU path; set PB_CAPS_HEAL=1 to install missing
+  --purity-audit             Reproducible public-host corpus purity report (+ audit log)
+  --quarantine-public        Tag public OSS hosts (exclude from preferred retrieve)
+  --validate-enterprise      Multi-agent E2E: lint→swarm→concert→quarantine→purity×3→retrieve→reindex→audit→doctor→sap
+  --config-of-config         Scripted inventory of agents/AppGate/AWS/SSM (before Day-1 intelligence)
+  --day1                     ONE Day-1: map → sessions → heal → mission gates → optional crawl
+  --mission                  Monday zero-fail gates (LOCAL_READY → OPS → AWS SHIM)
+  --fire-drill               Dual-OS airtight smoke (Mac live + Windows static + heal×2)
+  --metrics | --ops-metrics  Ops scoreboard → .brain/state/ops_metrics.json (graph/vectors/purity/audit/GodsEye)
+  --autopilot | --alive | --organism   Water-pipe only (sessions→map→local→AWS→alive)
+  --no-autopilot             Skip organism wake (rare)
+  --doctor                   Forensics only
+  -p NAME                    Codex profile override
+
+  DEFAULT (no flags): beastMode = maximum agent deployment + GodsEye prefer-on +
+  organism water-pipe (sessions, heal, crawl, swarm, AWS) then open Codex.
+  You should almost never type --heal/--doctor/--mission by hand.
+
+  Corporate deps: set PIP_INDEX_URL / corporate-package-index.env (Corporate Library) — see CORPORATE_PACKAGE_INDEX.md
+
+  LOOP → GRAPH → HARNESS (exits; no codex unless you omit exit modes):
+  --pipeline [demo|brain|test]   Offline demo / RAG fan-out / unit tests
+  --lgh …                        Alias for --pipeline
+
+  Never-forgets second mind (plain-text vault you own):
+  --never-forget-init        Create vault/IDENTITY.md + projects/ + skills/
+  --interview                Print one-question-at-a-time identity brief
+  --project NAME [--goal …]  Create+activate Inputs/Process/Outputs/Feedback
+  --skill NAME --skill-body  Save reusable skill under vault/skills/
+  --organize                 Daily autopilot: file Inputs, flag stale, summary
+
+Self-recovery (automatic): hooks, beast profiles, .brain tree, python runtime.
+
+Examples:
+  beastMode
+  beastMode --doctor
+  beastMode --enterprise
+  beastMode --enterprise --doctor
+  beastMode --enterprise --heal
+  beastMode --enterprise --sap-pack
+  beastMode --enterprise -ingestion https://gitlab.internal/group --ingest-only
+  beastMode -GodsEye
+  beastMode -colonoscopy https://gitlab.gnome.org/GNOME
+  beastMode --note "Tried X. Worked. Tell past-me: Y" --sync-memory
+  beastMode --swarm 32 "explain kafka controllers"
+  beastMode --pipeline
+  beastMode --pipeline brain -- " "   # (pipeline exits; use alone)
+  beastMode --never-forget-init
+  beastMode --interview
+  beastMode --project youtube-channel --goal "Ship weekly videos"
+  beastMode --organize
+
+See README.md — Distill vault / Never-forgets / LOOP-GRAPH-HARNESS
+EOF
+      exit 0
+      ;;
+    *)
+      PASSTHRU+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# ── Resolve python (venv preferred; never ask user to type python) ──
+resolve_py() {
+  local candidates=(
+    "$PRIVATE_BRAIN_HOME/venv/bin/python3"
+    "$PRIVATE_BRAIN_HOME/venv/bin/python"
+    "$PRIVATE_BRAIN_HOME/venv/Scripts/python.exe"
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -x "$c" ]] && "$c" -c "import sys" >/dev/null 2>&1; then
+      echo "$c"
+      return 0
+    fi
+  done
+  if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+    command -v python3
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1 && python -c "import sys" >/dev/null 2>&1; then
+    command -v python
+    return 0
+  fi
+  if command -v py >/dev/null 2>&1; then
+    echo "py"
+    return 0
+  fi
+  echo ""
+  return 1
+}
+
+PY="$(resolve_py || true)"
+if [[ -z "$PY" ]]; then
+  echo "beastMode: no usable python found (venv broken and no python3/py on PATH)" >&2
+  echo "  Re-run SETUP.command / SETUP.ps1 to recreate the private-brain venv." >&2
+  if [[ "$DOCTOR" == "1" ]]; then
+    echo ""
+    echo "FAIL — no usable python runtime for brain/chain checks"
+    echo "  Fix: re-run SETUP.command (or SETUP.ps1 on Windows)"
+    exit 1
+  fi
+  if [[ "$INGEST_ONLY" == "1" ]] || [[ -n "$INGEST_URL" || -n "$INGEST_PRESET" || -n "${PB_INGEST_URL:-}" ]]; then
+    exit 1
+  fi
+fi
+
+# scripts + package root (loop_graph_harness is a package under private-brain/)
+export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+
+# ── Load Corporate env early (corporate-package-index index + program stamps) ──
+for envf in \
+  "$PRIVATE_BRAIN_HOME/corporate.env" \
+  "$PRIVATE_BRAIN_HOME/corporate-package-index.env" \
+  "$HOME/.codex/corporate-package-index.env"
+do
+  if [[ -f "$envf" ]]; then
+    set +u
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        ''|\#*) continue ;;
+        export\ *) eval "$line" 2>/dev/null || true ;;
+      esac
+    done < "$envf"
+    set -u
+  fi
+done
+
+# ── doctor: human health report (READY / FAIL). User never types python. ──
+run_doctor() {
+  local fail=0
+  local ok_mark="OK"
+  local bad_mark="FAIL"
+  local line detail
+  local SCRIPTS="$PRIVATE_BRAIN_HOME/scripts"
+  local required_scripts=(
+    brain_lib.py
+    audit_lib.py
+    orchestrate.py
+    enterprise.py
+    vector_manager.py
+    smart_discover.py
+    gitlab_ingest.py
+    distill_vault.py
+    agent_swarm.py
+    godseye.py
+    second_mind.py
+    uninstall_private_brain.py
+    install_hooks.py
+    beastMode
+  )
+  local s missing=()
+
+  echo "Private Brain doctor"
+  echo "  CODEX_HOME=$CODEX_HOME"
+  echo "  PRIVATE_BRAIN_HOME=$PRIVATE_BRAIN_HOME"
+  echo ""
+
+  # hooks.json
+  if [[ -f "$CODEX_HOME/hooks.json" ]]; then
+    echo "  [$ok_mark] hooks.json          $CODEX_HOME/hooks.json"
+  else
+    echo "  [$bad_mark] hooks.json          missing — run SETUP.command or beastMode once to recover"
+    fail=1
+  fi
+
+  # beast.config.toml
+  if [[ -f "$CODEX_HOME/beast.config.toml" ]]; then
+    echo "  [$ok_mark] beast.config.toml   $CODEX_HOME/beast.config.toml"
+  else
+    echo "  [$bad_mark] beast.config.toml   missing — run SETUP.command or beastMode once to recover"
+    fail=1
+  fi
+
+  # private-brain home
+  if [[ -d "$PRIVATE_BRAIN_HOME" ]]; then
+    echo "  [$ok_mark] private-brain       $PRIVATE_BRAIN_HOME"
+  else
+    echo "  [$bad_mark] private-brain       missing — re-run SETUP.command"
+    fail=1
+  fi
+
+  # scripts inventory
+  if [[ ! -d "$SCRIPTS" ]]; then
+    echo "  [$bad_mark] scripts             directory missing: $SCRIPTS"
+    fail=1
+  else
+    for s in "${required_scripts[@]}"; do
+      if [[ ! -e "$SCRIPTS/$s" ]]; then
+        missing+=("$s")
+      fi
+    done
+    # visualizers
+    if [[ ! -f "$PRIVATE_BRAIN_HOME/visualizer/live_gui.py" ]]; then
+      missing+=("visualizer/live_gui.py")
+    fi
+    if [[ ! -f "$PRIVATE_BRAIN_HOME/visualizer/graph_gl.py" ]]; then
+      missing+=("visualizer/graph_gl.py")
+    fi
+    if [[ ! -f "$PRIVATE_BRAIN_HOME/loop_graph_harness/pipeline.py" ]]; then
+      missing+=("loop_graph_harness/pipeline.py")
+    fi
+    if [[ ${#missing[@]} -eq 0 ]]; then
+      echo "  [$ok_mark] scripts             ${#required_scripts[@]} core + live_gui + LGH present"
+    else
+      echo "  [$bad_mark] scripts             missing: ${missing[*]}"
+      fail=1
+    fi
+  fi
+
+  # node_count + chain_ok (internal python only — never shown as a user command)
+  local node_count=0
+  local chain_ok="false"
+  local chain_events="0"
+  local brain_err=""
+  if [[ -n "$PY" ]]; then
+    detail="$(
+      CODEX_HOME="$CODEX_HOME" PRIVATE_BRAIN_HOME="$PRIVATE_BRAIN_HOME" \
+      PYTHONPATH="$SCRIPTS${PYTHONPATH:+:$PYTHONPATH}" \
+        "$PY" - <<'PY' 2>/dev/null || true
+import sys
+from pathlib import Path
+import os
+sys.path.insert(0, str(Path(os.environ.get("PRIVATE_BRAIN_HOME", "")) / "scripts"))
+node_count = 0
+chain_ok = "false"
+events = 0
+err = ""
+try:
+    from brain_lib import status
+    st = status() or {}
+    node_count = int(st.get("node_count") or 0)
+except Exception as e:
+    err = "status:" + str(e)[:120]
+try:
+    from audit_lib import verify_chain
+    ch = verify_chain() or {}
+    chain_ok = "true" if ch.get("ok") else "false"
+    events = int(ch.get("events_checked") or 0)
+except Exception as e:
+    err = (err + " " if err else "") + "chain:" + str(e)[:120]
+# machine line for bash (no JSON parse needed)
+print(f"NODE={node_count}")
+print(f"CHAIN={chain_ok}")
+print(f"EVENTS={events}")
+print(f"ERR={err}")
+PY
+    )"
+    if [[ -n "$detail" ]]; then
+      node_count="$(printf '%s\n' "$detail" | sed -n 's/^NODE=//p' | head -1)"
+      chain_ok="$(printf '%s\n' "$detail" | sed -n 's/^CHAIN=//p' | head -1)"
+      chain_events="$(printf '%s\n' "$detail" | sed -n 's/^EVENTS=//p' | head -1)"
+      brain_err="$(printf '%s\n' "$detail" | sed -n 's/^ERR=//p' | head -1)"
+      node_count="${node_count:-0}"
+      chain_ok="${chain_ok:-false}"
+      chain_events="${chain_events:-0}"
+    else
+      brain_err="brain probe failed"
+    fi
+  else
+    brain_err="no python runtime"
+  fi
+
+  if [[ -n "$brain_err" && "${node_count:-0}" -eq 0 && "$chain_ok" != "true" ]]; then
+    echo "  [$bad_mark] node_count          could not read ($brain_err)"
+    echo "  [$bad_mark] chain_ok            could not verify ($brain_err)"
+    fail=1
+  else
+    if [[ "${node_count:-0}" -gt 0 ]]; then
+      echo "  [$ok_mark] node_count          $node_count (>0)"
+    else
+      echo "  [$bad_mark] node_count          ${node_count:-0} (need >0 — run ingestion or SETUP seed)"
+      fail=1
+    fi
+    if [[ "$chain_ok" == "true" ]]; then
+      echo "  [$ok_mark] chain_ok            true (events=$chain_events)"
+    else
+      echo "  [$bad_mark] chain_ok            false (events=$chain_events)${brain_err:+ — $brain_err}"
+      fail=1
+    fi
+  fi
+
+  # Enterprise extras when PB_ENTERPRISE=1 or --enterprise was set
+  if [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" ]]; then
+    echo ""
+    echo "  Enterprise checks:"
+    if [[ -n "$PY" ]]; then
+      ent_out="$(
+        CODEX_HOME="$CODEX_HOME" PRIVATE_BRAIN_HOME="$PRIVATE_BRAIN_HOME" PB_ENTERPRISE=1 \
+        PYTHONPATH="$SCRIPTS${PYTHONPATH:+:$PYTHONPATH}" \
+          "$PY" "$SCRIPTS/enterprise.py" doctor 2>/dev/null || true
+      )"
+      if [[ -n "$ent_out" ]]; then
+        ent_rc="$(
+        printf '%s\n' "$ent_out" | "$PY" -c "
+import sys, json
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    print('  [FAIL] enterprise doctor parse')
+    print('HARD=1')
+    raise SystemExit(0)
+# Soft checks: unknown/not-configured Corporate paths must not hard-fail home-dev
+soft = {
+    'corpus_public_ratio', 'corpus_pilot_ready',
+    'sres_approved_source', 'optional_capabilities',
+}
+if not d.get('enterprise'):
+    soft.add('corpus_pilot_ops')
+hard = 0
+for c in d.get('checks') or []:
+    name = c.get('name') or ''
+    if c.get('ok'):
+        mark = 'OK'
+    elif name in soft:
+        mark = 'WARN'  # soft / unknown-not-fail
+    else:
+        mark = 'FAIL'
+        hard = 1
+    print(f\"  [{mark}] {name:<22} {c.get('detail','')}\")
+print(f\"  program_id={d.get('program_id')} classification={d.get('classification')}\")
+print(f'HARD={hard}')
+" 2>/dev/null || { echo "  [WARN] enterprise doctor could not run"; echo "HARD=0"; }
+        )"
+        printf '%s\n' "$ent_rc" | sed '/^HARD=/d'
+        ent_hard="$(printf '%s\n' "$ent_rc" | sed -n 's/^HARD=//p' | tail -1)"
+        if [[ "${ent_hard:-0}" == "1" ]]; then
+          fail=1
+        fi
+        # fail doctor if enterprise profile missing
+        if [[ ! -f "$CODEX_HOME/beast-enterprise.config.toml" ]]; then
+          echo "  [FAIL] beast-enterprise.config.toml missing"
+          fail=1
+        fi
+      fi
+    fi
+  fi
+
+  echo ""
+  if [[ "$fail" -eq 0 ]]; then
+    echo "READY"
+    return 0
+  fi
+  echo "FAIL"
+  echo "  Fix: re-run SETUP.command, then: beastMode --doctor"
+  return 1
+}
+
+if [[ "$DOCTOR" == "1" ]]; then
+  if [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" ]]; then
+    export PB_ENTERPRISE=1
+    if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ]]; then
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ensure-profile >/dev/null 2>&1 || true
+    fi
+  fi
+  run_doctor
+  exit $?
+fi
+
+# ── Enterprise activate (profile + flag) ──
+if [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" ]]; then
+  export PB_ENTERPRISE=1
+  PROFILE="beast-enterprise"
+  if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ]]; then
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ensure-profile >/dev/null 2>&1 || true
+  fi
+  # block nuclear already handled; ensure no leftover nuclear flags
+fi
+
+# ── Explicit heal ──
+if [[ "${HEAL:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --heal needs python" >&2
+    exit 1
+  fi
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  # Keep caller's enterprise flag; default home = free optional install
+  if [[ "${ENTERPRISE:-0}" == "1" || "${PB_ENTERPRISE:-0}" == "1" ]]; then
+    export PB_ENTERPRISE=1
+    echo "beastMode: self-heal (enterprise · capabilities · chain · vectors · snapshot)…" >&2
+  else
+    export PB_ENTERPRISE=0
+    echo "beastMode: self-heal (home · capabilities free-pip · chain · vectors · snapshot)…" >&2
+  fi
+  # Capabilities first (home installs freely; Corporate index-or-degrade)
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/capabilities.py" --repair >/dev/null 2>&1 || true
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" heal
+  exit $?
+fi
+
+# ── Corpus purity audit (reproducible) ──
+if [[ "${PURITY_AUDIT:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --purity-audit needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  echo "beastMode: corpus purity audit (reproducible report_hash)…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" purity
+  exit $?
+fi
+
+# ── Quarantine public OSS hosts (tag, do not delete) ──
+if [[ "${QUARANTINE_PUBLIC:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --quarantine-public needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  echo "beastMode: quarantining public-host nodes for pilot retrieve purity…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" quarantine-public
+  exit $?
+fi
+
+# ── Config-of-config (scripted board before intelligent Day-1) ──
+if [[ "${CONFIG_OF_CONFIG:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --config-of-config needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  echo "beastMode: config-of-config (agent board · AppGate · AWS/SSM shim inventory)…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/config_of_config.py"
+  exit $?
+fi
+
+# ── Capabilities (optional libs · self-heal feature selection) ──
+if [[ "${CAPABILITIES:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --capabilities needs python" >&2
+    exit 1
+  fi
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  echo "beastMode: capabilities (numpy/pygame/GL · degrade if missing)…" >&2
+  if [[ "${PB_CAPS_HEAL:-0}" == "1" ]]; then
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/capabilities.py" --heal
+  else
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/capabilities.py"
+  fi
+  exit $?
+fi
+
+# ── Monday mission zero-fail gates ──
+if [[ "${MISSION:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --mission needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  export PYGAME_HIDE_SUPPORT_PROMPT=1
+  echo "beastMode: Monday mission (sessions → heal → LOCAL_READY → OPS → AWS SHIM)…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/mission_monday.py"
+  exit $?
+fi
+
+# ── Dual-OS fire drill (zero-fail smoke) ──
+if [[ "${FIRE_DRILL:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --fire-drill needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  export PYGAME_HIDE_SUPPORT_PROMPT=1
+  echo "beastMode: FIRE DRILL dual-OS zero-fail…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/fire_drill.py"
+  exit $?
+fi
+
+# ── Ops metrics scoreboard ──
+if [[ "${OPS_METRICS:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --metrics needs python" >&2
+    exit 1
+  fi
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  export PYGAME_HIDE_SUPPORT_PROMPT=1
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/ops_metrics.py"
+  exit $?
+fi
+
+# ── Show GodsEye (explicit reopen) ──
+if [[ "${SHOW_GODSEYE:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --show-godseye needs python" >&2
+    exit 1
+  fi
+  export PB_GODSEYE=1 PB_GODSEYE_FORCE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  echo "beastMode: opening GodsEye…" >&2
+  "$PY" - <<'PY'
+import os, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(os.environ["PRIVATE_BRAIN_HOME"]) / "scripts"))
+import godseye as ge
+ge.clear_dismissed()
+ge.set_enabled(True)
+print(ge.ensure_gui(force=True))
+PY
+  exit $?
+fi
+
+# ── Organism / autopilot explicit: water pipe then exit ──
+if [[ "${AUTOPILOT:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --organism needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  export PYGAME_HIDE_SUPPORT_PROMPT=1
+  echo "beastMode: ORGANISM water-pipe (sessions → local → AWS)…" >&2
+  if [[ -f "$PRIVATE_BRAIN_HOME/scripts/organism.py" ]]; then
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/organism.py"
+  else
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/autopilot.py"
+  fi
+  exit $?
+fi
+
+# ── ONE Day-1 entry (Codex sideload only) ──
+if [[ "${RUN_DAY1:-0}" == "1" ]]; then
+  export PB_ENTERPRISE=1
+  DAY1="$PRIVATE_BRAIN_HOME/scripts/DAY1"
+  if [[ ! -x "$DAY1" && -f "$DAY1" ]]; then chmod +x "$DAY1" 2>/dev/null || true; fi
+  if [[ ! -f "$DAY1" ]]; then
+    echo "beastMode: DAY1 script missing at $DAY1" >&2
+    exit 1
+  fi
+  echo "beastMode: DAY1 (map → sessions → heal → mission → crawl)…" >&2
+  exec bash "$DAY1" "$@"
+fi
+
+# ── Multi-agent enterprise validation (reproducible) ──
+if [[ "${VALIDATE_ENTERPRISE:-0}" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --validate-enterprise needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  # Top of script defaults PB_SWARM_AGENTS=0; bash ${var:-16} does NOT replace 0.
+  # Enterprise validation needs a positive swarm or ThreadPoolExecutor blows up.
+  if [[ -z "${PB_SWARM_AGENTS:-}" || "${PB_SWARM_AGENTS}" -le 0 ]]; then
+    export PB_SWARM_AGENTS=16
+  fi
+  echo "beastMode: enterprise multi-agent validation (lint→swarm→concert→quarantine→purity×3→retrieve→reindex→audit→doctor→sap)…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/validate_enterprise.py" --agents "${PB_SWARM_AGENTS}"
+  exit $?
+fi
+
+# ── SAP evidence pack ──
+if [[ "$SAP_PACK" == "1" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --sap-pack needs python" >&2
+    exit 1
+  fi
+  export PB_ENTERPRISE="${PB_ENTERPRISE:-1}"
+  echo "Private Brain: writing SAP evidence pack…" >&2
+  "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" sap-pack
+  exit $?
+fi
+
+# ── Self-recovery: beast profiles ──
+if [[ ! -f "$CODEX_HOME/beast.config.toml" ]]; then
+  echo "beastMode: recovering beast.config.toml" >&2
+  mkdir -p "$CODEX_HOME"
+  cat > "$CODEX_HOME/beast.config.toml" <<'TOML'
+model = "gpt-5.6-terra"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model_reasoning_effort = "high"
+TOML
+fi
+if [[ ! -f "$CODEX_HOME/beast-godseye.config.toml" ]]; then
+  cp "$CODEX_HOME/beast.config.toml" "$CODEX_HOME/beast-godseye.config.toml" 2>/dev/null || \
+    cat > "$CODEX_HOME/beast-godseye.config.toml" <<'TOML'
+model = "gpt-5.6-terra"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model_reasoning_effort = "high"
+TOML
+fi
+# Enterprise profile always recoverable
+if [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" || ! -f "$CODEX_HOME/beast-enterprise.config.toml" ]]; then
+  if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ]]; then
+    if [[ ! -f "$CODEX_HOME/beast-enterprise.config.toml" ]] || [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" ]]; then
+      PB_ENTERPRISE="${PB_ENTERPRISE:-1}" "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" ensure-profile >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+# ── Self-recovery: hooks.json ──
+recover_hooks() {
+  echo "beastMode: recovering hooks.json" >&2
+  local ih="$PRIVATE_BRAIN_HOME/scripts/install_hooks.py"
+  if [[ -n "$PY" && -f "$ih" ]]; then
+    CODEX_HOME="$CODEX_HOME" PRIVATE_BRAIN_HOME="$PRIVATE_BRAIN_HOME" \
+      "$PY" "$ih" >/dev/null 2>&1 && return 0
+  fi
+  # Minimal hooks pointing at private-brain/hooks (user never types python)
+  mkdir -p "$PRIVATE_BRAIN_HOME/hooks" "$CODEX_HOME"
+  local hook_py="${PY:-python3}"
+  local ss="$PRIVATE_BRAIN_HOME/hooks/session_start.py"
+  local ups="$PRIVATE_BRAIN_HOME/hooks/user_prompt_submit.py"
+  local stop="$PRIVATE_BRAIN_HOME/hooks/stop_validate.py"
+  cat > "$CODEX_HOME/hooks.json" <<JSON
+{
+  "description": "Private Brain RAG-DAG auto boot (recovered)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${hook_py} ${ss}",
+            "timeout": 120,
+            "statusMessage": "Private Brain RAG-DAG boot"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${hook_py} ${ups}",
+            "timeout": 180,
+            "statusMessage": "Private Brain retrieve DAG"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${hook_py} ${stop}",
+            "timeout": 30,
+            "statusMessage": "Private Brain answer validator"
+          }
+        ]
+      }
+    ]
+  }
+}
+JSON
+  cp "$CODEX_HOME/hooks.json" "$PRIVATE_BRAIN_HOME/hooks/hooks.json" 2>/dev/null || true
+}
+
+if [[ ! -f "$CODEX_HOME/hooks.json" ]]; then
+  recover_hooks
+fi
+
+# ── Self-recovery: .brain tree ──
+if [[ ! -d "$PRIVATE_BRAIN_HOME/.brain" ]]; then
+  echo "beastMode: recovering .brain tree" >&2
+  if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/brain_init.py" ]]; then
+    CODEX_HOME="$CODEX_HOME" PRIVATE_BRAIN_HOME="$PRIVATE_BRAIN_HOME" \
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/brain_init.py" >/dev/null 2>&1 || true
+  elif [[ -n "$PY" ]]; then
+    "$PY" -c "import sys; sys.path.insert(0, r'''$PRIVATE_BRAIN_HOME/scripts'''); from brain_lib import ensure_tree; ensure_tree()" \
+      >/dev/null 2>&1 || true
+  fi
+fi
+
+# ── Self-configure: pick available modules every launch (never blocks) ──
+if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/capabilities.py" ]]; then
+  "$PY" - <<'PY' >/dev/null 2>&1 || true
+import os, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(os.environ["PRIVATE_BRAIN_HOME"]) / "scripts"))
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+try:
+    from capabilities import apply_env_hints, probe, write_state
+    r = probe()
+    write_state(r)
+    apply_env_hints(r)  # sets PB_GODSEYE_BACKEND / PB_LAYOUT_ACCEL from importable modules
+except Exception:
+    pass
+PY
+fi
+
+# ── ORGANISM water-pipe on every launch (beastMode always-on) ──
+# PB_AUTOPILOT=0 or --no-autopilot disables. Never blocks opening Codex.
+if [[ -n "$PY" \
+   && "${NO_AUTOPILOT:-0}" != "1" \
+   && "${PB_AUTOPILOT:-1}" != "0" ]]; then
+  export PB_ENTERPRISE=1
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  export PYGAME_HIDE_SUPPORT_PROMPT=1
+  export PB_GODSEYE="${PB_GODSEYE:-1}"
+  echo "beastMode: waking ORGANISM (water pipe · max agents · GodsEye prefer-on)…" >&2
+  if [[ -f "$PRIVATE_BRAIN_HOME/scripts/organism.py" ]]; then
+    # Full water-pipe first boot / force; light tick if recently alive (still heals+sessions)
+    light="${PB_ORGANISM_LIGHT:-0}"
+    if [[ "$light" != "1" && -f "$PRIVATE_BRAIN_HOME/.brain/state/organism.json" ]]; then
+      # auto-light if organism report < 2h old
+      if "$PY" -c "
+import json,time
+from pathlib import Path
+p=Path(r'''$PRIVATE_BRAIN_HOME''')/'.brain/state/organism.json'
+import sys
+try:
+  age=time.time()-p.stat().st_mtime
+  d=json.loads(p.read_text())
+  sys.exit(0 if age<7200 and d.get('alive') else 1)
+except Exception:
+  sys.exit(1)
+" 2>/dev/null; then
+        light=1
+      fi
+    fi
+    if [[ "$light" == "1" ]]; then
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/organism.py" --quiet --no-swarm --no-crawl --no-force-sessions 2>/dev/null || true
+    else
+      "$PY" "$PRIVATE_BRAIN_HOME/scripts/organism.py" --quiet 2>/dev/null || true
+    fi
+  elif [[ -f "$PRIVATE_BRAIN_HOME/scripts/autopilot.py" ]]; then
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/autopilot.py" --quiet 2>/dev/null || true
+  fi
+  mkdir -p "$PRIVATE_BRAIN_HOME/.brain/state" 2>/dev/null || true
+  : > "$PRIVATE_BRAIN_HOME/.brain/state/enterprise.on" 2>/dev/null || true
+  : > "$PRIVATE_BRAIN_HOME/.brain/state/beastmode.on" 2>/dev/null || true
+fi
+
+# Resolve codex binary (not needed for --ingest-only)
+CODEX_BIN="${CODEX_BIN:-}"
+if [[ "$INGEST_ONLY" != "1" ]]; then
+  if [[ -z "$CODEX_BIN" ]]; then
+    if [[ -x /Applications/ChatGPT.app/Contents/Resources/codex ]]; then
+      CODEX_BIN=/Applications/ChatGPT.app/Contents/Resources/codex
+    elif command -v codex >/dev/null 2>&1; then
+      CODEX_BIN="$(command -v codex)"
+    else
+      echo "codex not found — install Codex CLI first" >&2
+      exit 1
+    fi
+  fi
+fi
+
+# Feature: selective ingestion — prefer unified ingest_url router (GitLab/Jira/Confluence)
+# Everything lands on shared graph via ingest_bus (tag / rate / vectorize).
+if [[ -n "${INGEST_URL}" || -n "${INGEST_PRESET}" || -n "${PB_INGEST_URL:-}" ]]; then
+  INGEST_URL_PY="$PRIVATE_BRAIN_HOME/scripts/ingest_url.py"
+  INGEST_GL="$PRIVATE_BRAIN_HOME/scripts/gitlab_ingest.py"
+  if [[ -f "$INGEST_URL_PY" ]]; then
+    INGEST="$INGEST_URL_PY"
+    USE_URL_ROUTER=1
+  elif [[ -f "$INGEST_GL" ]]; then
+    INGEST="$INGEST_GL"
+    USE_URL_ROUTER=0
+  else
+    echo "beastMode: ingest_url.py / gitlab_ingest.py missing under $PRIVATE_BRAIN_HOME/scripts" >&2
+    exit 1
+  fi
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: cannot ingest without python" >&2
+    exit 1
+  fi
+
+  # Enterprise: block public presets / hosts before crawling
+  if [[ "${PB_ENTERPRISE:-0}" == "1" ]]; then
+    chk_args=()
+    if [[ -n "$INGEST_PRESET" ]]; then
+      chk_args+=(--preset "$INGEST_PRESET")
+    else
+      chk_args+=(--url "${INGEST_URL:-$PB_INGEST_URL}")
+    fi
+    if ! "$PY" "$PRIVATE_BRAIN_HOME/scripts/enterprise.py" check-ingest "${chk_args[@]}"; then
+      echo "beastMode: enterprise policy blocked this ingestion" >&2
+      exit 2
+    fi
+  fi
+
+  # Always DEEP + verbose progress by default; --max raises limits further
+  if [[ "${USE_URL_ROUTER}" == "1" ]]; then
+    INGEST_ARGS=(--json)
+  else
+    INGEST_ARGS=(--deep --verbose --json)
+  fi
+  if [[ -n "$INGEST_PRESET" ]]; then
+    INGEST_ARGS+=(--preset "$INGEST_PRESET")
+    echo "Private Brain ingestion preset: $INGEST_PRESET" >&2
+  else
+    URL="${INGEST_URL:-$PB_INGEST_URL}"
+    export PB_INGEST_URL="$URL"
+    INGEST_ARGS+=(--url "$URL")
+    echo "Private Brain ingestion: $URL" >&2
+  fi
+  if [[ "$INGEST_MAX" == "1" ]]; then
+    INGEST_ARGS+=(--max)
+    echo "Private Brain ingestion: MAX capture (deep + generous limits, still polite)" >&2
+  fi
+  if [[ "$INGEST_SHALLOW" == "1" && "${USE_URL_ROUTER}" != "1" ]]; then
+    INGEST_ARGS+=(--shallow)
+  fi
+  if [[ -n "$INGEST_MAX_PROJECTS" && "${USE_URL_ROUTER}" != "1" ]]; then
+    INGEST_ARGS+=(--max-projects "$INGEST_MAX_PROJECTS")
+  fi
+  # Prefer explicit --token; gitlab_ingest also reads GITLAB_TOKEN env
+  if [[ -n "${GITLAB_TOKEN:-}" ]]; then
+    INGEST_ARGS+=(--token "$GITLAB_TOKEN")
+  fi
+
+  set +e
+  "$PY" "$INGEST" "${INGEST_ARGS[@]}"
+  INGEST_EC=$?
+  set -e
+  if [[ "$INGEST_EC" -ne 0 ]]; then
+    echo "beastMode: ingestion finished with errors (exit $INGEST_EC; continuing to codex unless --ingest-only)" >&2
+  fi
+  if [[ "$INGEST_ONLY" == "1" ]]; then
+    echo "beastMode: --ingest-only done" >&2
+    exit "$INGEST_EC"
+  fi
+fi
+
+# Feature: NEVER-FORGET second mind (plain vault identity / projects / skills)
+SM="$PRIVATE_BRAIN_HOME/scripts/second_mind.py"
+if [[ -n "$PY" && -f "$SM" ]]; then
+  if [[ "$NEVER_FORGET_INIT" == "1" ]]; then
+    echo "beastMode: never-forget second mind init" >&2
+    "$PY" "$SM" init 2>&1 | head -20 >&2 || true
+  fi
+  if [[ "$INTERVIEW" == "1" ]]; then
+    echo "beastMode: identity interview prompt (paste into Codex next session)" >&2
+    "$PY" "$SM" interview 2>&1 || true
+  fi
+  if [[ -n "$PROJECT_NAME" ]]; then
+    echo "beastMode: project $PROJECT_NAME" >&2
+    SM_ARGS=(project --name "$PROJECT_NAME")
+    if [[ -n "$PROJECT_GOAL" ]]; then
+      SM_ARGS+=(--goal "$PROJECT_GOAL")
+    fi
+    "$PY" "$SM" "${SM_ARGS[@]}" 2>&1 | head -25 >&2 || true
+    SYNC_MEMORY=1
+  fi
+  if [[ -n "$SKILL_NAME" ]]; then
+    if [[ -z "$SKILL_BODY" ]]; then
+      echo "beastMode: --skill needs --skill-body \"steps...\"" >&2
+      exit 2
+    fi
+    echo "beastMode: skill $SKILL_NAME" >&2
+    "$PY" "$SM" skill --name "$SKILL_NAME" --body "$SKILL_BODY" 2>&1 | head -15 >&2 || true
+  fi
+  if [[ "$ORGANIZE" == "1" ]]; then
+    echo "beastMode: organize autopilot (Inputs→Process, stale flags)" >&2
+    "$PY" "$SM" organize 2>&1 | head -30 >&2 || true
+  fi
+fi
+
+# Feature: LOOP → GRAPH → HARNESS pipeline (exits — proof of isolation stack)
+if [[ -n "$PIPELINE_MODE" ]]; then
+  if [[ -z "$PY" ]]; then
+    echo "beastMode: --pipeline needs python runtime" >&2
+    exit 1
+  fi
+  export PYTHONPATH="${PRIVATE_BRAIN_HOME}/scripts:${PRIVATE_BRAIN_HOME}${PYTHONPATH:+:$PYTHONPATH}"
+  echo "beastMode: LOOP→GRAPH→HARNESS mode=$PIPELINE_MODE" >&2
+  set +e
+  case "$PIPELINE_MODE" in
+    demo)  "$PY" -m loop_graph_harness.pipeline demo ;;
+    brain)
+      PROMPT_LGH="${PASSTHRU[*]:-kafka resilience}"
+      "$PY" -m loop_graph_harness.pipeline brain --prompt "$PROMPT_LGH" --slices 4
+      ;;
+    test)  "$PY" -m loop_graph_harness.pipeline test ;;
+    *)     "$PY" -m loop_graph_harness.pipeline demo ;;
+  esac
+  PIPE_EC=$?
+  set -e
+  exit "$PIPE_EC"
+fi
+
+# Feature: DISTILL VAULT — one markdown boss brain → Codex skills (never re-explain)
+DISTILL="$PRIVATE_BRAIN_HOME/scripts/distill_vault.py"
+if [[ -n "$PY" && -f "$DISTILL" ]]; then
+  if [[ -n "$NOTE_TEXT" ]]; then
+    "$PY" "$DISTILL" note --text "$NOTE_TEXT" >/dev/null 2>&1 || true
+    echo "beastMode: distill note saved under vault/distill/" >&2
+    SYNC_MEMORY=1
+  fi
+  if [[ "$SYNC_MEMORY" == "1" ]] || { [[ "$AUTO_SYNC" == "1" ]] && [[ ! -f "$CODEX_HOME/skills/private-brain/SKILL.md" ]]; }; then
+    echo "beastMode: syncing distill vault → Codex skills/AGENTS (boss brain)" >&2
+    "$PY" "$DISTILL" sync 2>/dev/null | head -15 >&2 || true
+  fi
+  if [[ "$SYNC_MEMORY" == "1" && "$INGEST_ONLY" == "1" && -z "$INGEST_URL" && -z "$INGEST_PRESET" && -z "${PB_INGEST_URL:-}" ]]; then
+    echo "beastMode: --sync-memory done" >&2
+    exit 0
+  fi
+fi
+
+# Feature-only exit (never-forget / organize / interview without codex)
+if [[ "$EXIT_AFTER_FEATURE" == "1" && "$INGEST_ONLY" != "1" ]]; then
+  # still allow --sync-memory above; then leave without codex
+  if [[ "$SYNC_MEMORY" == "1" && -n "$PY" && -f "$DISTILL" ]]; then
+    true
+  fi
+  echo "beastMode: feature done (no codex — sideload tools only)" >&2
+  exit 0
+fi
+
+# Feature: GodsEye GUI — only when arg/env says so; clear dismiss so user intent wins
+if [[ "${PB_GODSEYE}" == "1" || "${PB_GODSEYE}" == "true" || "${PB_GODSEYE}" == "on" ]]; then
+  if [[ -n "$PY" && -f "$PRIVATE_BRAIN_HOME/scripts/godseye.py" ]]; then
+    # start/restart single window (user asked via -GodsEye)
+    "$PY" "$PRIVATE_BRAIN_HOME/scripts/godseye.py" start >/dev/null 2>&1 || true
+  fi
+fi
+
+# NEVER replace codex — only exec it with hooks bypass + profile
+if [[ "$INGEST_ONLY" == "1" ]]; then
+  exit 0
+fi
+# Full system access required (mission): profile has danger-full-access + approval never.
+# Also pass CLI bypass so sandbox helper never gates tool use.
+# ( --nuclear still blocked as a separate "even more" flag under enterprise; this is baseline.)
+if [[ "${PB_ENTERPRISE:-0}" == "1" || "${ENTERPRISE:-0}" == "1" || "$PROFILE" == "beast-enterprise" || "$PROFILE" == "beast" || "$PROFILE" == "beast-godseye" ]]; then
+  # avoid duplicate flags
+  has_bypass=0
+  for x in "${EXTRA_CODEX[@]+"${EXTRA_CODEX[@]}"}"; do
+    [[ "$x" == --dangerously-bypass-approvals-and-sandbox ]] && has_bypass=1
+  done
+  if [[ "$has_bypass" != "1" ]]; then
+    EXTRA_CODEX+=(--dangerously-bypass-approvals-and-sandbox)
+  fi
+fi
+# Safe empty-array expand under `set -u` (bash errors on "${arr[@]}" when arr is empty)
+# GodsEye already started above when -GodsEye was set; this only launches Codex.
+set +u
+exec "$CODEX_BIN" --dangerously-bypass-hook-trust "${EXTRA_CODEX[@]}" -p "$PROFILE" "${PASSTHRU[@]}"

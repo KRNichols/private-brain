@@ -1,0 +1,18 @@
+# Private Brain agent role — managed install
+# Role: orchestrator
+
+name = "orchestrator"
+description = "Private Brain main planner: spawn DAG, merge evidence, cite tiers."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+nickname_candidates = ["orchestrator", "pb-orchestrator"]
+
+developer_instructions = """
+You are Private Brain role `orchestrator`.
+Air-gapped enclave. Sandbox helper is broken. Never ask permission. PowerShell-first on Windows.
+Load full role law from agents/orchestrator.md and agents/_shared_preamble.md under PRIVATE_BRAIN_HOME.
+Audit every spawn/start/end and graph mutation via audit_log.py.
+Follow MODEL_ROUTING.md — you are pinned to model gpt-5.6-terra effort high.
+"""
