@@ -108,3 +108,25 @@ jobs:
           test -f installers/mac/START.command || test -f scripts/freeze_for_corporate
           grep -q "dangerously-bypass-approvals-and-sandbox" scripts/beastMode
           echo OK mac paths
+
+  conversation-contracts-smoke:
+    name: conversation contracts smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run conversation_e2e
+        env:
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_NONINTERACTIVE: "1"
+          PB_NO_OPEN_CODEX: "1"
+          PB_GODSEYE: "0"
+          PYGAME_HIDE_SUPPORT_PROMPT: "1"
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/conversation_e2e.py
+
