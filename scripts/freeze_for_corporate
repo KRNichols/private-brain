@@ -106,6 +106,40 @@ _pb_copy_tree() {
   fi
 }
 
+
+# portable zip (zip CLI preferred; Python zipfile fallback for Windows runners)
+_pb_zip_dir() {
+  local src="$1" dest="$2" inner="${3:-}"
+  mkdir -p "$(dirname "$dest")"
+  rm -f "$dest"
+  if command -v zip >/dev/null 2>&1; then
+    if [[ -n "$inner" ]]; then
+      ( cd "$(dirname "$src")" && zip -r -q "$dest" "$inner" )
+    else
+      ( cd "$src" && zip -r -q "$dest" . )
+    fi
+    return 0
+  fi
+  python3 - "$src" "$dest" "$inner" <<'PYZ'
+import sys, zipfile
+from pathlib import Path
+src, dest, inner = sys.argv[1], sys.argv[2], sys.argv[3]
+src_p = Path(src)
+with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    if inner:
+        root = src_p
+        base = src_p.parent
+        for p in root.rglob("*"):
+            if p.is_file():
+                zf.write(p, p.relative_to(base).as_posix())
+    else:
+        for p in src_p.rglob("*"):
+            if p.is_file():
+                zf.write(p, p.relative_to(src_p).as_posix())
+print("zipped", dest)
+PYZ
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIVE="${PRIVATE_BRAIN_HOME:-$HOME/.codex/private-brain}"
 PKG="$ROOT/package"
@@ -354,16 +388,13 @@ find "$STAGING" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || tru
 find "$STAGING" -name '*.pyc' -delete 2>/dev/null || true
 
 ZIP="$DIST/${NAME}.zip"
-(
-  cd "$STAGING"
-  zip -r -q "$ZIP" "$NAME"
-)
+_pb_zip_dir "$STAGING/$NAME" "$ZIP" "$NAME"
 
 # OS-only READY zips from same stage (before rm staging)
 echo "==> Build MAC-READY + WINDOWS-READY from same stage"
 rm -f "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip"
-( cd "$STAGING/$NAME/windows" && zip -r -q "$DIST/PrivateBrain-WINDOWS-READY.zip" . )
-( cd "$STAGING/$NAME/mac" && zip -r -q "$DIST/PrivateBrain-MAC-READY.zip" . )
+_pb_zip_dir "$STAGING/$NAME/windows" "$DIST/PrivateBrain-WINDOWS-READY.zip"
+_pb_zip_dir "$STAGING/$NAME/mac" "$DIST/PrivateBrain-MAC-READY.zip"
 if command -v shasum >/dev/null 2>&1; then
   shasum -a 256 "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip" | tee "$DIST/READY.sha256"
   grep "WINDOWS-READY" "$DIST/READY.sha256" > "$DIST/PrivateBrain-WINDOWS-READY.sha256" || true
