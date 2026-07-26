@@ -99,10 +99,7 @@ Each bullet: action + why + cite. No filler.
 
 - [ ] **12 · Golden config + Phase-2 handoff**
 ```text
-Write golden config and golden_join.json (no secrets).
-Confirm paths for GOLDEN_CONFIG.md, golden_config.json, golden_join.json.
-Prepare Phase-2 handoff pack for parent AI. List what is complete vs gaps.
-Do not invent Corporate hosts or tokens.
+Write golden config and prepare phase 2 handoff. Confirm golden_join.json path (no secrets).
 ```
 
 ### Session controls (as needed)

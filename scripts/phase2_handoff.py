@@ -34,21 +34,43 @@ def _j(p: Path) -> Any:
 
 
 def write_handoff() -> dict[str, Any]:
-    # Phase-2 requires golden map (Phase-1 law) — write if missing
+    """Write Phase-2 handoff MD. Ensures golden_config.json + golden_join.json exist first."""
+    # Phase-2 requires golden map (Phase-1 law) — ensure via write_golden()
     try:
         from golden_config import write_golden
-        st = _state() if "_state" in dir() else None
-        from brain_lib import STATE_DIR
-        if not (STATE_DIR / "golden_config.json").exists() or not (STATE_DIR / "golden_join.json").exists():
+
+        try:
+            from brain_lib import STATE_DIR as _gold_st
+        except Exception:
+            _gold_st = _ROOT / ".brain" / "state"
+        _gold_st.mkdir(parents=True, exist_ok=True)
+        if (
+            not (_gold_st / "golden_config.json").is_file()
+            or not (_gold_st / "golden_join.json").is_file()
+        ):
             write_golden()
+        # golden_config may write under scripts parent; also ensure kit-local copies
+        if (
+            not (_gold_st / "golden_config.json").is_file()
+            or not (_gold_st / "golden_join.json").is_file()
+        ):
+            write_golden()  # second attempt if path mismatch soft-failed
     except Exception:
         try:
             from golden_config import write_golden
+
             write_golden()
         except Exception:
             pass
 
     st = _ROOT / ".brain" / "state"
+    try:
+        from brain_lib import STATE_DIR as _st
+
+        if _st.is_dir():
+            st = _st
+    except Exception:
+        pass
     org = _j(st / "organism.json")
     ops = _j(st / "ops_metrics.json")
     gold = _j(st / "golden_config.json")
