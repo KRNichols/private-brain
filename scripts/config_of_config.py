@@ -378,9 +378,9 @@ def suggest_route(board: dict[str, Any]) -> dict[str, Any]:
     aws = board.get("aws_shim") or {}
     pkg = board.get("package_route") or {}
     app = board.get("appgate") or {}
-    scores = {"corporate-library": 0, "aws": 0, "headless": 1}
+    scores = {"corporate_library": 0, "aws": 0, "headless": 1}
     if pkg.get("PIP_INDEX_URL_set") or pkg.get("corporate-package-index_env_files"):
-        scores["corporate-library"] += 3
+        scores["corporate_library"] += 3
     if aws.get("region_env") and str(aws.get("region_env")).startswith("us-gov"):
         scores["aws"] += 3
     if aws.get("profiles_configured") or aws.get("AWS_PROFILE_set"):
@@ -390,7 +390,7 @@ def suggest_route(board: dict[str, Any]) -> dict[str, Any]:
     if aws.get("env_token_flags", {}).get("CODEARTIFACT_AUTH_TOKEN"):
         scores["aws"] += 2
     if app.get("likely_installed"):
-        scores["corporate-library"] += 1
+        scores["corporate_library"] += 1
         scores["aws"] += 1
     # prior
     prior = (board.get("prior_state") or {}).get("prior_day1_route")
@@ -403,7 +403,7 @@ def suggest_route(board: dict[str, Any]) -> dict[str, Any]:
         "recommended_route": best,
         "scores": scores,
         "rationale": {
-            "corporate-library": "Corporate Library Corporate Package Index / corporate pip when index env present",
+            "corporate_library": "Corporate Library Corporate Package Index / corporate pip when index env present",
             "aws": "Government Cloud CLI/SSM/CodeArtifact signals → AWS package + LLM shim",
             "headless": "safe default — stdlib RAG until approved index exists",
         },

@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 # Freeze Private Brain Corporate kit: dual folders mac/ + windows/ (OS-specific, minimal).
-# Package model: Corporate Library / Protected Gateway approved-source via PIP_INDEX_URL — NOT offline wheel kit primary.
+# Package model: Corporate Library/Protected Gateway approved-source via PIP_INDEX_URL — NOT offline wheel kit primary.
 # Core is stdlib; optional GodsEye installs from Corporate Package Index at destination.
 set -euo pipefail
+
+# portable copy (rsync preferred; cp -a fallback for Windows Git Bash)
+_pb_copy_tree() {
+  local src="$1" dst="$2"; shift 2 || true
+  mkdir -p "$dst"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a "$@" "$src" "$dst"
+  else
+    # ignore exclude flags for fallback simplicity
+    if [[ -d "$src" ]]; then
+      cp -a "$src"/. "$dst"/ 2>/dev/null || cp -a "$src"/* "$dst"/ 2>/dev/null || true
+    else
+      cp -a "$src" "$dst" 2>/dev/null || true
+    fi
+  fi
+}
+
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIVE="${PRIVATE_BRAIN_HOME:-$HOME/.codex/private-brain}"
@@ -52,13 +69,13 @@ rsync -a --exclude '__pycache__' "$LIVE/loop_graph_harness/" "$PKG/loop_graph_ha
 rsync -a --exclude '__pycache__' "$LIVE/agents/" "$PKG/agents/" 2>/dev/null || true
 rsync -a --exclude '__pycache__' "$LIVE/codex-agents/" "$PKG/codex-agents/" 2>/dev/null || true
 rsync -a "$LIVE/config/" "$PKG/config/" 2>/dev/null || true
-for f in beast-mode.md beast-enterprise.md README.md READY.md SIDELOAD.md ruff.toml developer_instructions.txt CORPORATE_PACKAGE_INDEX.md MISSION_MONDAY.md; do
+for f in beast-mode.md beast-enterprise.md README.md READY.md SIDELOAD.md ruff.toml developer_instructions.txt Corporate Library_ARTIFACTORY.md MISSION_MONDAY.md; do
   [[ -f "$LIVE/$f" ]] && cp -f "$LIVE/$f" "$PKG/$f"
 done
-[[ -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" ]] && cp -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" "$PKG/CORPORATE_PACKAGE_INDEX.md"
+[[ -f "$ROOT/Corporate Library_ARTIFACTORY.md" ]] && cp -f "$ROOT/Corporate Library_ARTIFACTORY.md" "$PKG/Corporate Library_ARTIFACTORY.md"
 [[ -f "$ROOT/corporate-package-index.env.example" ]] && cp -f "$ROOT/corporate-package-index.env.example" "$PKG/corporate-package-index.env.example"
 [[ -f "$ROOT/corporate.env.example" ]] && cp -f "$ROOT/corporate.env.example" "$PKG/corporate.env.example"
-# Corporate Library / Protected Gateway approved-source + freeze policy (not offline wheel kit primary)
+# Corporate Library/Protected Gateway approved-source + freeze policy (not offline wheel kit primary)
 mkdir -p "$PKG/config"
 for jf in judge_corporate_library_policy.json judge_freeze.json; do
   if [[ -f "$LIVE/config/$jf" ]]; then
@@ -78,8 +95,8 @@ if [[ -f "$PKG/scripts/day1_first_start.py" && "$PKG/scripts/day1_first_start.py
   cp -f "$PKG/scripts/day1_first_start.py" "$LIVE/scripts/day1_first_start.py" 2>/dev/null || true
 fi
 
-echo "==> Deps model: Corporate Library / Protected Gateway via PIP_INDEX_URL (primary)"
-# Primary Corporate model: optional GodsEye installs at destination from Corporate Library / Protected Gateway
+echo "==> Deps model: Corporate Library/Protected Gateway via PIP_INDEX_URL (primary)"
+# Primary Corporate model: optional GodsEye installs at destination from Corporate Library/Protected Gateway
 # (PIP_INDEX_URL / PB_PIP_INDEX_URL). This freeze never scrapes public PyPI into
 # vendor/wheels. Local wheels (if any) are a last-resort cache only — never required.
 if [[ -f "$LIVE/visualizer/requirements.txt" ]]; then
@@ -88,7 +105,7 @@ if [[ -f "$LIVE/visualizer/requirements.txt" ]]; then
 elif [[ ! -f "$PKG/visualizer/requirements.txt" ]]; then
   mkdir -p "$PKG/visualizer"
   cat > "$PKG/visualizer/requirements.txt" <<'REQ'
-# GodsEye optional — install only from Corporate Library / Protected Gateway (PIP_INDEX_URL). Not required for headless.
+# GodsEye optional — install only from Corporate Library/Protected Gateway (PIP_INDEX_URL). Not required for headless.
 pygame>=2.5.0
 PyOpenGL>=3.1.0
 REQ
@@ -116,12 +133,12 @@ cat > "$PKG/vendor/README.md" <<'EOF'
 Optional GodsEye packages install at the destination from the approved Corporate Package Index remote:
 
 ```bash
-export PIP_INDEX_URL="https://…corporate-library-or-protected-gateway…/simple"
+export PIP_INDEX_URL="https://…sres-or-bsf…/simple"
 export PIP_TRUSTED_HOST="…"
 # then SETUP / pip install -r visualizer/requirements.txt
 ```
 
-If a package is missing from Corporate Library / Protected Gateway → **request onboarding** or stay **headless** (core is stdlib).
+If a package is missing from Corporate Library/Protected Gateway → **request onboarding** or stay **headless** (core is stdlib).
 
 ## Local wheels (`vendor/wheels/`)
 
@@ -130,7 +147,7 @@ If a package is missing from Corporate Library / Protected Gateway → **request
 - Must be Corporate Package Index-origin if used; do not scrape public PyPI into this folder.
 - Empty directory is normal and correct.
 
-See `../CORPORATE_PACKAGE_INDEX.md`, `../config/judge_corporate_library_policy.json`, and `../config/judge_freeze.json`.
+See `../Corporate Library_ARTIFACTORY.md`, `../config/judge_corporate_library_policy.json`, and `../config/judge_freeze.json`.
 EOF
 
 echo "==> MANIFEST"
@@ -141,16 +158,16 @@ cat > "$PKG/CORPORATE_MANIFEST.json" <<EOF
   "layout": "mac/ + windows/",
   "source_live": "$LIVE",
   "enterprise": true,
-  "day1": "START → day1_first_start (corporate-library|aws|headless)",
+  "day1": "START → day1_first_start (sres|aws|headless)",
   "package_model": "approved_source",
   "not_package_model": "offline_wheel_kit_primary",
-  "primary_deps_path": "Corporate Library / Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+  "primary_deps_path": "Corporate Library/Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
   "local_wheels": "optional last-resort cache only; never required",
-  "core_deps": "stdlib only; optional GodsEye from Corporate Library / Protected Gateway via PIP_INDEX_URL",
-  "if_package_missing": "request Corporate Library / Protected Gateway onboard or drop feature / stay headless",
+  "core_deps": "stdlib only; optional GodsEye from Corporate Library/Protected Gateway via PIP_INDEX_URL",
+  "if_package_missing": "request Corporate Library/Protected Gateway onboard or drop feature / stay headless",
   "policy": "config/judge_corporate_library_policy.json",
   "freeze_policy": "config/judge_freeze.json",
-  "notes": "No .brain corpus. Primary: Corporate Library / Protected Gateway PIP_INDEX_URL. Optional local wheels only as last-resort cache; never required. Each OS folder is self-contained."
+  "notes": "No .brain corpus. Primary: Corporate Library/Protected Gateway PIP_INDEX_URL. Optional local wheels only as last-resort cache; never required. Each OS folder is self-contained."
 }
 EOF
 
@@ -204,14 +221,13 @@ stage_os_kit() {
   cp -f "$ROOT/corporate-package-index.env.example" "$INS/corporate-package-index.env.example" 2>/dev/null || true
   cat > "$INS/ROUTES.txt" <<'EOF'
 Package routes (START → day1). Same Mac/Windows.
-  corporate-library | aws | headless
+  sres | aws | headless
 Corporate: place golden_join.json here (no secrets). Else interview/headless.
 EOF
 
   if [[ "$os" == "mac" ]]; then
     cp -f "$INST/mac/START.command" "$INS/START.command"
-    [[ -f "$ROOT/SETUP.command" ]] && cp -f "$ROOT/SETUP.command" "$INS/SETUP.command" || echo "#!/bin/bash
-echo SETUP stub — use package install" > "$INS/SETUP.command"
+    if [[ -f "$ROOT/SETUP.command" ]]; then cp -f "$ROOT/SETUP.command" "$INS/SETUP.command"; else echo "#!/bin/bash" > "$INS/SETUP.command"; fi
     [[ -f "$ROOT/UNINSTALL.command" ]] && cp -f "$ROOT/UNINSTALL.command" "$INS/UNINSTALL.command" || true
     chmod +x "$INS/START.command" "$INS/SETUP.command" "$INS/UNINSTALL.command" \
       "$dest/tools/engine/scripts/beastMode" \
@@ -288,13 +304,17 @@ if [[ -f "$LIVE/scripts/nuclear_x10.py" || -f "$LIVE/scripts/nuclear_zero_fail.p
   echo "==> NUCLEAR pre-ship gate"
   NUC="$LIVE/scripts/nuclear_x10.py"
   [[ -f "$NUC" ]] || NUC="$LIVE/scripts/nuclear_zero_fail.py"
-  NUC_PY="${LIVE}/venv/bin/python3"; [[ -x "$NUC_PY" ]] || NUC_PY=python3
+  NUC_PY="python3"
+  [[ -x "${LIVE}/venv/bin/python3" ]] && NUC_PY="${LIVE}/venv/bin/python3"
   if ! ( cd "$LIVE" && PB_ENTERPRISE=1 PRIVATE_BRAIN_HOME="$LIVE" PB_NUCLEAR_HEADLESS=1 "$NUC_PY" "$NUC" ); then
-  if [[ "${PB_CI:-}" == "1" ]]; then echo "NUCLEAR soft-fail in CI — continuing kit build"; else
-    echo "NUCLEAR RED — deleting ship zips" >&2
-    rm -f "$ZIP" "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip"
-    rm -rf "$STAGING"
-    exit 1
+    if [[ "${PB_CI:-0}" == "1" ]]; then
+      echo "NUCLEAR soft-fail in CI — kit still built" >&2
+    else
+      echo "NUCLEAR RED — deleting ship zips" >&2
+      rm -f "$ZIP" "$DIST/PrivateBrain-WINDOWS-READY.zip" "$DIST/PrivateBrain-MAC-READY.zip"
+      rm -rf "$STAGING"
+      exit 1
+    fi
   fi
 fi
 

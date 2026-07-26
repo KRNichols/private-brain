@@ -207,7 +207,7 @@ def route(prompt: str) -> dict[str, Any] | None:
             return {"matched": True, "title": "brief fail", "context": str(e), "system": "fail"}
 
     # kingdom / api knowledge refresh
-    if any(x in low for x in ("kingdom keys", "show apis", "how does corporate package index", "corporate-library api", "gitlab api")):
+    if any(x in low for x in ("kingdom keys", "show apis", "how does corporate package index", "corporate_library api", "gitlab api")):
         keys = _ROOT / "docs" / "KINGDOM_KEYS.md"
         text = keys.read_text(encoding="utf-8")[:14000] if keys.exists() else "KINGDOM_KEYS.md missing"
         return {

@@ -877,12 +877,12 @@ def doctor_enterprise() -> dict[str, Any]:
 
     # Corporate Library / Protected Gateway approved-source package model (not offline wheel kit)
     try:
-        corporate-library = judge_corporate_library_policy()
+        corporate_library = judge_corporate_library_policy()
         add(
             "sres_approved_source",
-            bool(corporate-library.get("ok")),
-            f"model={corporate-library.get('model')} pip_index_set={corporate-library.get('pip_index_set')} "
-            f"policy_present={corporate-library.get('policy_present')} wheels={corporate-library.get('vendor_wheels_count')}",
+            bool(corporate_library.get("ok")),
+            f"model={corporate_library.get('model')} pip_index_set={corporate_library.get('pip_index_set')} "
+            f"policy_present={corporate_library.get('policy_present')} wheels={corporate_library.get('vendor_wheels_count')}",
         )
     except Exception as e:
         add("sres_approved_source", True, f"skip:{e}")  # soft-ish; core still works
@@ -1319,7 +1319,7 @@ def main() -> int:
             "heal",
             "purity",
             "quarantine-public",
-            "corporate-library-policy",
+            "corporate_library-policy",
             "capabilities",
         ],
     )
@@ -1384,7 +1384,7 @@ def main() -> int:
         r = quarantine_public_nodes(dry_run=bool(args.dry_run))
         print(json.dumps(r, indent=2, default=str))
         return 0 if r.get("ok") else 2
-    if args.cmd == "corporate-library-policy":
+    if args.cmd == "corporate_library-policy":
         r = judge_corporate_library_policy()
         r["full_policy"] = load_sres_policy()
         print(json.dumps(r, indent=2, default=str))

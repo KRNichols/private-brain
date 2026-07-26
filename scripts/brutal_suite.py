@@ -452,7 +452,7 @@ def pack_day1() -> dict[str, Any]:
     results = []
     for route, extra in [
         ("headless", ["--program", "brutal-headless"]),
-        ("corporate-library", ["--program", "brutal-corporate-library", "--index-url", "https://corporate-library.example/simple", "--trusted-host", "corporate-library.example"]),
+        ("corporate_library", ["--program", "brutal-corporate_library", "--index-url", "https://corporate_library.example/simple", "--trusted-host", "corporate_library.example"]),
         ("aws", ["--program", "brutal-aws", "--index-url", "https://x.d.codeartifact.gov-region-1.amazonaws.com/pypi/r/simple/"]),
     ]:
         cmd = [py, str(script), "--yes", "--route", route, "--no-godseye", *extra]

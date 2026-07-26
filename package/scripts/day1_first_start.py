@@ -2,7 +2,7 @@
 """Intelligent Day-1 first start — map environment and choose package route.
 
 Routes:
-  corporate-library   — Corporate Library Corporate Package Index (default Corporate approved pip index)
+  corporate_library   — Corporate Library Corporate Package Index (default Corporate approved pip index)
   aws    — AWS CodeArtifact / Government Cloud-style approved index
   headless — stdlib-only core (no third-party; GodsEye off)
 
@@ -15,7 +15,7 @@ Writes:
 
 Usage:
   python3 day1_first_start.py              # interactive
-  python3 day1_first_start.py --yes --route corporate-library --program X
+  python3 day1_first_start.py --yes --route corporate_library --program X
   python3 day1_first_start.py --probe-only # print map JSON, no writes
 """
 from __future__ import annotations
@@ -135,13 +135,13 @@ def probe_environment() -> dict[str, Any]:
 
 
 ROUTES = {
-    "corporate-library": {
+    "corporate_library": {
         "label": "Corporate Library Corporate Package Index",
         "blurb": "Corporate Corporate Library PyPI remote (default Corporate). GodsEye optional wheels from Corporate Library.",
         "need_index": True,
-        "index_kind": "corporate-library",
-        "example_index": "https://REPLACE.corporate-library.corporate-package-index.example/corporate-package-index/api/pypi/pypi-virtual/simple",
-        "example_host": "REPLACE.corporate-library.corporate-package-index.example",
+        "index_kind": "corporate_library",
+        "example_index": "https://REPLACE.corporate_library.corporate-package-index.example/corporate-package-index/api/pypi/pypi-virtual/simple",
+        "example_host": "REPLACE.corporate_library.corporate-package-index.example",
         "require_corporate-package-index": True,
     },
     "aws": {
@@ -203,7 +203,7 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
         if coc_route in ROUTES:
             return coc_route
         if probe.get("env_hints", {}).get("PIP_INDEX_URL"):
-            return "corporate-library"
+            return "corporate_library"
         if probe.get("env_hints", {}).get("AWS_DEFAULT_REGION") or probe.get("env_hints", {}).get(
             "CODEARTIFACT_AUTH_TOKEN"
         ):
@@ -223,7 +223,7 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
         )
     print()
     # intelligent default: scripted board → env → heuristics
-    default = "corporate-library"
+    default = "corporate_library"
     if probe.get("env_hints", {}).get("AWS_DEFAULT_REGION") or probe.get("env_hints", {}).get(
         "CODEARTIFACT_AUTH_TOKEN"
     ):
@@ -239,7 +239,7 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
         print(f"  [{key}] {meta['label']}")
         print(f"       {meta['blurb']}")
     print()
-    choice = _ask("Route (corporate-library / aws / headless)", default, noninteractive=False).lower()
+    choice = _ask("Route (corporate_library / aws / headless)", default, noninteractive=False).lower()
     if choice not in ROUTES:
         print(f"Unknown route {choice!r} — using {default}")
         choice = default
@@ -675,7 +675,7 @@ Do **not** invent a separate product CLI.
 
 ## What you should do next in conversation
 1. Confirm the route still matches the user's network (Corporate Library vs AWS vs headless).
-2. If route is **corporate-library** or **aws** and index still has `REPLACE`, ask for the real approved index URL.
+2. If route is **corporate_library** or **aws** and index still has `REPLACE`, ask for the real approved index URL.
 3. Prefer **internal** GitLab/Jira/Confluence ingest only — never public OSS presets under enterprise.
 4. After install: cite node_ids; respect quarantine / pilot_ops_ready.
 5. Corpus `pilot_ready` (public_ratio < 15%) needs **internal re-ingest** — do not claim purity is fixed by quarantine alone.
