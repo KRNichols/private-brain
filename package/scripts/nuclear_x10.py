@@ -409,6 +409,7 @@ def main() -> int:
 
     # dual OS ROOT readme mentions open Codex
     gate("I_root_readme_open_codex", "Open Codex" in src("installers/shared/ROOT_README.md") or "open Codex" in src("installers/shared/ROOT_README.md"))
+    gate("I_lint_sanitized_branding", (_SCRIPTS / "lint_sanitized_branding.py").is_file())
     gate("I_day1_auto_discover", (_SCRIPTS / "day1_auto_discover.py").is_file())
     gate("I_nuclear_day1_kingdom", (_SCRIPTS / "nuclear_day1_kingdom_e2e.py").is_file())
     gate("I_nuclear_conversation_e2e", (_SCRIPTS / "nuclear_conversation_e2e.py").is_file())

@@ -382,40 +382,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: No customer terms in public tree
+      - name: Lint sanitized branding (no SRES/BSF/Boeing)
         run: |
-          python - <<'PY'
-          import pathlib, re, sys
-          # Build needles without writing full banned tokens as a single source literal
-          needles = [
-              "Boe" + "ing", "BOE" + "ING",
-              "SR" + "ES", "BS" + "F",
-              "Artif" + "actory",
-          ]
-          skip_names = {"nuclear-winter.yml", "nuclear_conversation_e2e.py", "conversation_e2e.py"}
-          hits = []
-          for p in pathlib.Path(".").rglob("*"):
-              if p.suffix.lower() not in {".py", ".md", ".yml", ".yaml", ".json", ".ps1", ".command", ".toml", ".txt"}:
-                  continue
-              if ".git" in p.parts or "dist" in p.parts or p.name in skip_names:
-                  continue
-              try:
-                  text = p.read_text(encoding="utf-8", errors="ignore")
-              except Exception:
-                  continue
-              for i, line in enumerate(text.splitlines(), 1):
-                  # allow lines that only define the scanner needles (concat patterns)
-                  if " + " in line and any(n[:3] in line for n in needles):
-                      continue
-                  for n in needles:
-                      if re.search(r"\b" + re.escape(n) + r"\b", line):
-                          hits.append(f"{p}:{i}:{line[:120]}")
-                          break
-          if hits:
-              print("\n".join(hits[:50]))
-              sys.exit(1)
-          print("OK sanitized")
-          PY
+          python scripts/lint_sanitized_branding.py
+
       - name: brain_lib PRIVATE_BRAIN_HOME wins
         run: |
           grep -q "PRIVATE_BRAIN_HOME" scripts/brain_lib.py

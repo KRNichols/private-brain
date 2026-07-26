@@ -176,7 +176,7 @@ def route(prompt: str) -> dict[str, Any] | None:
             ),
         )
 
-if any(x in low for x in ("ingest sessions", "harvest sessions", "load my sessions")):
+    if any(x in low for x in ("ingest sessions", "harvest sessions", "load my sessions")):
         cmd = [
             _py(),
             "-c",

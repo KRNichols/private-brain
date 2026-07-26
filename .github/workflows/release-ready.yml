@@ -5,6 +5,13 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    paths:
+      - "scripts/**"
+      - "package/**"
+      - "installers/**"
+      - "hooks/**"
+      - "visualizer/**"
+      - ".github/workflows/release-ready.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Sanitize branding lint
+        run: python scripts/lint_sanitized_branding.py
+
       - name: Freeze dual-OS READY kits
         env:
           PB_ENTERPRISE: "1"
