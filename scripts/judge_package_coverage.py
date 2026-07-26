@@ -250,13 +250,13 @@ def main() -> int:
         else:
             print(f"  OK import {p.name}")
 
-    # hooks
+    # hooks — ZERO SOFT: import failure is a hard fail
     for p in hooks:
         ok, detail = import_module(p)
         import_results[f"hooks/{p.name}"] = detail
         if not ok:
-            # hooks may need stdin — soft
-            print(f"  SOFT hook import {p.name}: {detail}")
+            import_fail += 1
+            print(f"  FAIL hook import {p.name}: {detail}")
         else:
             print(f"  OK hook {p.name}")
 
@@ -300,8 +300,12 @@ def main() -> int:
         import_fail += 1
         traceback.print_exc()
 
-    # optional full e2e under coverage
-    full = os.environ.get("PB_COVERAGE_FULL", "0") in ("1", "true", "yes")
+    # Full e2e under coverage — default ON in CI (zero soft: exercise real paths)
+    full = os.environ.get("PB_COVERAGE_FULL", "1" if os.environ.get("PB_CI") == "1" else "0") in (
+        "1",
+        "true",
+        "yes",
+    )
     if full:
         print("\n## 4b · full e2e under coverage (slow)")
         for script in (
@@ -390,8 +394,9 @@ def main() -> int:
     for name, pct, hit, stmt in file_stats[-5:]:
         print(f"    {pct:5.1f}%  {hit}/{stmt}  {name}")
 
-    min_cov = float(os.environ.get("PB_COVERAGE_MIN", "25"))
-    # For first land, 25% mean is realistic; ratchet via env
+    # ZERO SOFT: every file must have >0%; mean floor ratchets via PB_COVERAGE_MIN
+    # Full e2e under coverage raises mean (~25% today) — floor 20 so green means real exercise
+    min_cov = float(os.environ.get("PB_COVERAGE_MIN", "20"))
     report = {
         "overall_mean_pct": round(overall, 2),
         "min_required": min_cov,
@@ -429,16 +434,9 @@ def main() -> int:
     unmeasured = [n for n, p, h, s in file_stats if p <= 0.0]
     if unmeasured:
         print(f"  FAIL unmeasured/0% files ({len(unmeasured)}): {unmeasured[:25]}")
-        # For non-critical, soft for now if import worked — still fail if CRITICAL
-        only_noncrit = [u for u in unmeasured if not _is_critical(Path(u).stem)]
-        if zero_critical:
-            fail = True
-        elif len(unmeasured) > len(all_py) * 0.5:
-            # more than half zero is fail
-            fail = True
-            print("  FAIL more than 50% of package at 0%")
-        else:
-            print(f"  SOFT {len(only_noncrit)} non-critical at 0% — ratchet later")
+        # ZERO SOFT: any 0% file fails the judge — no soft non-critical carve-out
+        fail = True
+        print(f"  FAIL zero-soft: {len(unmeasured)} files at 0% line coverage (nothing optional)")
 
     # Absolute: every file must compile + import (already enforced)
     # Absolute: every critical file must have >0% 

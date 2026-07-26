@@ -47,6 +47,13 @@ from brain_lib import (
     write_node,
 )
 
+# Enterprise / enclave awareness (PB_ENTERPRISE + is_enterprise flag file)
+try:
+    from enterprise import is_enterprise  # type: ignore
+except Exception:  # pragma: no cover
+    def is_enterprise() -> bool:  # type: ignore
+        return os.environ.get("PB_ENTERPRISE", "") in ("1", "true", "yes")
+
 UA = "PrivateBrainPublicCrawler/1.0 (+airgapped-dev; educational)"
 
 

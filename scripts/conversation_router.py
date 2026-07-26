@@ -142,6 +142,31 @@ def route(prompt: str) -> dict[str, Any] | None:
     if any(x in low for x in ("show metrics", "ops metrics", "scoreboard", "how healthy")):
         return pack("FORENSICS · ops metrics", _run("ops_metrics.py", timeout=120))
 
+    if any(
+        x in low
+        for x in (
+            "godseye",
+            "gods eye",
+            "open godseye",
+            "show graph",
+            "live graph",
+            "metal gl",
+        )
+    ):
+        return pack("GODSEYE · conversational open", _run("godseye.py", ["--help"], timeout=60))
+
+    if any(
+        x in low
+        for x in (
+            "golden config",
+            "golden join",
+            "show golden",
+            "write golden",
+            "load golden",
+        )
+    ):
+        return pack("GOLDEN · config surface", _run("golden_config.py", ["--help"], timeout=60))
+
     if any(x in low for x in ("run mission", "monday gates", "mission monday", "local ready")):
         return pack("FORENSICS · mission gates", _run("mission_monday.py", timeout=300))
 

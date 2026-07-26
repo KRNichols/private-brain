@@ -55,23 +55,23 @@ jobs:
               print("\n".join(errs[:20]))
               sys.exit(1)
           PY
-      - name: Nuclear x10 (headless soft if no brain)
+      - name: Nuclear x10 (ZERO SOFT — fail is fail)
         shell: bash
         env:
           PB_ENTERPRISE: "1"
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
           PB_NUCLEAR_HEADLESS: "1"
           PB_CI: "1"
+          PB_ZERO_SOFT: "1"
         run: |
           set -e
           if [ -f scripts/nuclear_x10.py ]; then
-            python scripts/nuclear_x10.py || {
-              echo "nuclear soft in empty CI workspace — re-run with continue"
-              # Still fail on SyntaxError class — re-compile already passed
-              exit 0
-            }
+            python scripts/nuclear_x10.py
           elif [ -f scripts/nuclear_zero_fail.py ]; then
-            python scripts/nuclear_zero_fail.py || exit 0
+            python scripts/nuclear_zero_fail.py
+          else
+            echo "FATAL: nuclear_x10.py missing"
+            exit 1
           fi
 
   windows-paths:
@@ -171,6 +171,7 @@ jobs:
           PB_GODSEYE: "0"
           PB_E2E_INSTALL_CODEX: "1"
           PB_E2E_CODEX_ATTEMPTS: "8"
+          PB_ZERO_SOFT: "1"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"

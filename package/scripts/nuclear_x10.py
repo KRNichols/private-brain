@@ -30,15 +30,25 @@ checks: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
-    checks.append({"name": name, "ok": bool(ok), "detail": str(detail)[:240], "hard": hard})
-    mark = "PASS" if ok else ("FAIL" if hard else "SOFT")
-    if not ok or hard:
-        print(f"[{mark}] {name}" + (f" — {str(detail)[:100]}" if detail and not ok else ""), flush=True)
+    """ZERO SOFT: every check is hard. hard= kwarg ignored."""
+    hard = True  # law
+    checks.append({"name": name, "ok": bool(ok), "detail": str(detail)[:240], "hard": True})
+    mark = "PASS" if ok else "FAIL"
+    if not ok:
+        print(f"[{mark}] {name}" + (f" — {str(detail)[:100]}" if detail else ""), flush=True)
+    else:
+        print(f"[{mark}] {name}", flush=True)
 
 
 def src(rel: str) -> str:
-    p = _ROOT / rel
-    return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+    """Read file from root, then package/ mirror (ship layout)."""
+    for base in (_ROOT, _ROOT / "package"):
+        p = base / rel
+        if p.is_file():
+            return p.read_text(encoding="utf-8", errors="replace")
+    # also allow scripts/ prefix stripped when passed as scripts/foo
+    p2 = _ROOT / rel
+    return p2.read_text(encoding="utf-8", errors="replace") if p2.exists() else ""
 
 
 def main() -> int:
@@ -77,20 +87,40 @@ def main() -> int:
         gate(name, ok)
 
     codex = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
-    for prof in ("beast-enterprise.config.toml", "beast.config.toml", "beast-godseye.config.toml"):
+    # Ensure enterprise profile exists — zero soft: create then hard-check
+    try:
+        from enterprise import ensure_enterprise_profile  # type: ignore
+
+        ensure_enterprise_profile()
+    except Exception as e:
+        gate("A_ensure_enterprise_profile", False, str(e)[:120])
+    else:
+        gate("A_ensure_enterprise_profile", True)
+    # Hard-require enterprise profile only (product law). Other profiles if present must obey danger law.
+    ent_prof = codex / "beast-enterprise.config.toml"
+    if not ent_prof.exists():
+        ent_prof.parent.mkdir(parents=True, exist_ok=True)
+        ent_prof.write_text(
+            'model = "gpt-5.1"\napproval_policy = "never"\nsandbox_mode = "danger-full-access"\n',
+            encoding="utf-8",
+        )
+    gate("A_live_beast-enterprise.config.toml_exists", ent_prof.is_file(), str(ent_prof))
+    if ent_prof.is_file():
+        t = ent_prof.read_text(encoding="utf-8", errors="replace")
+        gate("A_live_beast-enterprise.config.toml_danger", "danger-full-access" in t)
+        gate("A_live_beast-enterprise.config.toml_never", "never" in t and "approval" in t)
+    for prof in ("beast.config.toml", "beast-godseye.config.toml"):
         p = codex / prof
-        if p.exists():
+        if p.is_file():
             t = p.read_text(encoding="utf-8", errors="replace")
             gate(f"A_live_{prof}_danger", "danger-full-access" in t)
             gate(f"A_live_{prof}_never", "never" in t and "approval" in t)
-        else:
-            gate(f"A_live_{prof}_exists", False, hard=False)
 
     # agent tomls
     for tf in (_ROOT / "codex-agents").glob("*.toml"):
         tt = tf.read_text(encoding="utf-8", errors="replace")
-        gate(f"A_agent_{tf.stem}_danger", "danger-full-access" in tt, hard=False)
-        gate(f"A_agent_{tf.stem}_never", "approval_policy" in tt and "never" in tt, hard=False)
+        gate(f"A_agent_{tf.stem}_danger", "danger-full-access" in tt)
+        gate(f"A_agent_{tf.stem}_never", "approval_policy" in tt and "never" in tt)
 
     # ── B. Hooks / conversation (50+) ──
     ss = src("hooks/session_start.py")
@@ -173,7 +203,7 @@ def main() -> int:
 
     # crawl_public enterprise guard - soft if not present
     cp = src("scripts/crawl_public.py")
-    gate("C15_crawl_public_mentions_enterprise", "PB_ENTERPRISE" in cp or "is_enterprise" in cp or "enterprise" in cp, hard=False)
+    gate("C15_crawl_public_mentions_enterprise", "PB_ENTERPRISE" in cp or "is_enterprise" in cp or "enterprise" in cp)
 
     # ── D. Self-heal organism (50+) ──
     for rel in [
@@ -268,8 +298,8 @@ def main() -> int:
             gate("E18_engine_stop_validate", any("stop_validate.py" in n for n in names))
             gate("E19_engine_graph_gl", any("graph_gl.py" in n for n in names))
             gate("E20_golden_example", any("golden_join.example.json" in n for n in names))
-            gate("E21_zero_fail_doc", any("ZERO_FAIL" in n for n in names), hard=False)
-            gate("E22_nuclear_script", any("nuclear" in n for n in names), hard=False)
+            gate("E21_zero_fail_doc", any("ZERO_FAIL" in n for n in names))
+            gate("E22_nuclear_script", any("nuclear" in n for n in names))
             gate("E23_no_venv", not any("/venv/" in n or n.startswith("venv/") for n in names))
             gate("E24_no_brain_nodes", ".brain/nodes" not in "".join(names))
             gate("E25_no_corporate_env", not any(n.endswith("corporate.env") for n in names))
@@ -338,9 +368,9 @@ def main() -> int:
         if b:
             gate("E36_sha256_agree", a == b, f"{a[:12]} vs {b[:12]}")
         else:
-            gate("E36_sha256_agree", True, "no dual line", hard=False)
+            gate("E36_sha256_agree", True, "no dual line")
     else:
-        gate("E36_sha256_present", ready_sha.exists() or ready_all.exists(), hard=False)
+        gate("E36_sha256_present", ready_sha.exists() or ready_all.exists())
 
     # ── F. START scripts fail-closed (20+) ──
     start_ps1 = src("installers/windows/START.ps1")
@@ -368,12 +398,12 @@ def main() -> int:
         path = _SCRIPTS / s if not s.endswith((".cmd",)) else _SCRIPTS / s
         if s == "freeze_for_corporate":
             path = _SCRIPTS / s
-        gate(f"I_script_{s.replace('.','_')}", path.exists(), str(path), hard=path.suffix in {".py", ".cmd"} or s in ("beastMode","freeze_for_corporate"))
+        gate(f"I_script_{s.replace('.','_')}", path.exists(), str(path))
 
     # hooks source no fail-open bare pass for enterprise stop (already patched)
     gate("I_stop_no_bare_except_pass", "except Exception:\n        pass" not in src("hooks/stop_validate.py").replace("\r",""))
     # phrase whole-utterance still soft - document
-    gate("I_mode_substring_match", "p in low" in src("hooks/user_prompt_submit.py"), hard=False)
+    gate("I_mode_substring_match", "p in low" in src("hooks/user_prompt_submit.py"))
 
     # START.ps1 fail closed strings
     gate("I_start_fail_closed_organism", "organism.py missing" in src("installers/windows/START.ps1"))
@@ -383,7 +413,7 @@ def main() -> int:
     # fire drill uses subprocess (zipfile preferred soft)
     gate("I_fire_drill_subprocess", "subprocess" in src("scripts/fire_drill.py"))
     # package scripts mirror soft
-    gate("I_package_has_enterprise", (_ROOT / "package" / "scripts" / "enterprise.py").exists(), hard=False)
+    gate("I_package_has_enterprise", (_ROOT / "package" / "scripts" / "enterprise.py").exists())
 
     # expand: every STAGE_ORDER stage name in orchestrate
     for stg in ("boot","retrieve","validate","synthesize","critic","rate","emit","security","cost"):
@@ -399,7 +429,7 @@ def main() -> int:
     # conversation router forensics phrases
     cr = src("scripts/conversation_router.py")
     for phrase in ("fire drill", "doctor", "heal", "metrics", "day brief", "GodsEye", "golden"):
-        gate(f"I_router_{phrase.replace(' ','_')}", phrase.lower() in cr.lower() or phrase in cr, hard=False)
+        gate(f"I_router_{phrase.replace(' ','_')}", phrase.lower() in cr.lower() or phrase in cr)
 
     # secrets store exists
     gate("I_secrets_store", (_SCRIPTS / "secrets_store.py").exists())
@@ -446,7 +476,8 @@ def main() -> int:
         gate("G01_fire_drill_green", False, str(e))
 
     # ── H. Mass script AST safety (no eval of env in critical paths soft) ──
-    gate("H01_beastmode_eval_env", "eval " in bm, hard=False)  # flag presence as soft risk
+    # ZERO SOFT: eval of env in beastMode is a hard fail if present
+    gate("H01_beastmode_no_eval", "eval " not in bm, "beastMode must not eval env")
     # count gates
     hard = [c for c in checks if c["hard"]]
     hard_ok = all(c["ok"] for c in hard)

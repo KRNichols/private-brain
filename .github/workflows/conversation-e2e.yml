@@ -123,6 +123,7 @@ jobs:
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
           PB_E2E_INSTALL_CODEX: "1"
           PB_E2E_CODEX_ATTEMPTS: "8"
+          PB_ZERO_SOFT: "1"
           # Live agent needs auth secrets — CLI hard smoke is mandatory; exec optional
           PB_E2E_CODEX_EXEC: "0"
         run: |

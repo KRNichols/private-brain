@@ -45,17 +45,17 @@ RESULTS: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
+    """ZERO SOFT: every failure is a FAIL. hard= kwarg ignored."""
     global PASS, FAIL
+    hard = True  # law — no soft-pass
     if ok:
         PASS += 1
         status = "PASS"
-    elif hard:
+    else:
         FAIL += 1
         status = "FAIL"
-    else:
-        status = "SOFT"
-    RESULTS.append({"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:400], "status": status})
-    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    RESULTS.append({"name": name, "ok": bool(ok), "hard": True, "detail": str(detail)[:400], "status": status})
+    mark = "OK" if ok else "FAIL"
     extra = f" - {detail[:180]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
 
@@ -412,7 +412,6 @@ def main() -> int:
             "S2/validate_pass_with_evidence",
             val.get("pass_for_answer") is True or (concert.get("retrieve") or {}).get("hit_count", 0) > 0,
             str(val)[:120],
-            hard=False,
         )
         # Seed last_dag so Stop gate has same evidence concert produced
         from brain_lib import write_json, STATE_DIR  # type: ignore
@@ -474,8 +473,7 @@ def main() -> int:
         gate(
             "S2/bare_id_blocked",
             stop_bare.get("decision") == "block" or stop_bare.get("continue") is False,
-            json.dumps(stop_bare)[:200],
-            hard=False,  # soft if inject empty confuses bare strategy
+            json.dumps(stop_bare)[:200],  # soft if inject empty confuses bare strategy
         )
 
         # ────────────────────────────────────────────────────────────
@@ -586,7 +584,7 @@ def main() -> int:
             out = sim.user_says(phrase)
             inj = (sim.last_inject + " " + json.dumps(out)).lower()
             hit = any(n.lower() in inj for n in needles) or len(sim.last_inject) > 20
-            gate(f"S5/phrase[{phrase[:24]}]", hit, sim.last_inject[:160], hard=False)
+            gate(f"S5/phrase[{phrase[:24]}]", hit, sim.last_inject[:160])
 
         # Neo4j track question
         c3 = run_concert(brain, env, "How do we clean Neo4j dirty graph NEO_CLEAN_SCHEMA_feedface?")
@@ -595,7 +593,6 @@ def main() -> int:
             "S5/neo_seed_retrieved",
             nodes["neo"] in e3 or any("feedface" in x for x in e3),
             f"ids={e3[:6]}",
-            hard=False,
         )
 
         # ────────────────────────────────────────────────────────────
@@ -608,9 +605,9 @@ def main() -> int:
         if gl.is_file():
             gtxt = gl.read_text(encoding="utf-8", errors="replace")
             gate("S6/godseye_simple_mode", "simple" in gtxt.lower())
-            gate("S6/godseye_no_bleed", "bleed" in gtxt.lower() or "simple_mode" in gtxt, hard=False)
+            gate("S6/godseye_no_bleed", "bleed" in gtxt.lower() or "simple_mode" in gtxt)
         else:
-            gate("S6/godseye_simple_mode", False, "graph_gl missing", hard=False)
+            gate("S6/godseye_simple_mode", False, "graph_gl missing")
 
         from enterprise import judge_corporate_library_policy, ensure_enterprise_profile  # type: ignore
 

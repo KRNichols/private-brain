@@ -36,13 +36,15 @@ RESULTS: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> bool:
+    """ZERO SOFT: every failure is a FAIL. hard= kwarg ignored."""
     global PASS, FAIL
+    hard = True  # law
     if ok:
         PASS += 1
-    elif hard:
+    else:
         FAIL += 1
-    RESULTS.append({"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:500]})
-    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    RESULTS.append({"name": name, "ok": bool(ok), "hard": True, "detail": str(detail)[:500]})
+    mark = "OK" if ok else "FAIL"
     extra = f" - {detail[:180]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
     return bool(ok)
@@ -99,8 +101,9 @@ def main() -> int:
     # ── 1. GitLab public ─────────────────────────────────────────
     print("\n## 1 - GitLab public (gitlab-org light)")
     if os.environ.get("PB_FORCE_FEED_SKIP_GITLAB") in ("1", "true", "yes"):
-        gate("gitlab_feed", True, "skipped by env", hard=False)
-        feeds["sources"]["gitlab"] = {"skipped": True}
+        # ZERO SOFT: skip env is a hard fail in CI — do not pretend pass
+        gate("gitlab_feed", False, "PB_FORCE_FEED_SKIP_GITLAB set — skip banned under zero-soft")
+        feeds["sources"]["gitlab"] = {"skipped": True, "fail": True}
     else:
         # Prefer gitlab_ingest preset shallow-ish limits
         r = _py_run(
@@ -150,19 +153,18 @@ def main() -> int:
         gate(
             "gitlab_ingested_nodes",
             len(gl_nodes) > 0 or r.get("ok"),
-            f"nodes={len(gl_nodes)} rc={r.get('rc')}",
-            hard=False,  # network flaky on some runners
+            f"nodes={len(gl_nodes)} rc={r.get('rc')}",  # network flaky on some runners
         )
         if len(gl_nodes) > 0:
             gate("gitlab_has_graph", True, f"n={len(gl_nodes)}")
         else:
-            gate("gitlab_has_graph", False, (r.get("stderr") or r.get("stdout") or "")[:200], hard=False)
+            gate("gitlab_has_graph", False, (r.get("stderr") or r.get("stdout") or "")[:200])
 
     # ── 2. GitHub public ─────────────────────────────────────────
     print("\n## 2 - GitHub public (cli/cli small)")
     if os.environ.get("PB_FORCE_FEED_SKIP_GITHUB") in ("1", "true", "yes"):
-        gate("github_feed", True, "skipped", hard=False)
-        feeds["sources"]["github"] = {"skipped": True}
+        gate("github_feed", False, "PB_FORCE_FEED_SKIP_GITHUB set — skip banned under zero-soft")
+        feeds["sources"]["github"] = {"skipped": True, "fail": True}
     else:
         r = _py_run(
             [
@@ -210,15 +212,14 @@ def main() -> int:
             "github_ingested_nodes",
             len(gh_nodes) > 0 or r.get("ok"),
             f"nodes={len(gh_nodes)} rc={r.get('rc')}",
-            hard=False,
         )
-        gate("github_has_graph", len(gh_nodes) > 0, f"n={len(gh_nodes)}", hard=False)
+        gate("github_has_graph", len(gh_nodes) > 0, f"n={len(gh_nodes)}")
 
     # ── 3. Jira public (Apache) ──────────────────────────────────
     print("\n## 3 - Jira public (issues.apache.org)")
     if os.environ.get("PB_FORCE_FEED_SKIP_JIRA") in ("1", "true", "yes"):
-        gate("jira_feed", True, "skipped", hard=False)
-        feeds["sources"]["jira"] = {"skipped": True}
+        gate("jira_feed", False, "PB_FORCE_FEED_SKIP_JIRA set — skip banned under zero-soft")
+        feeds["sources"]["jira"] = {"skipped": True, "fail": True}
     else:
         r = _py_run(
             [
@@ -240,15 +241,14 @@ def main() -> int:
             "jira_ingested_nodes",
             len(j_nodes) > 0 or r.get("ok"),
             f"nodes={len(j_nodes)} rc={r.get('rc')}",
-            hard=False,
         )
-        gate("jira_has_graph", len(j_nodes) > 0, f"n={len(j_nodes)}", hard=False)
+        gate("jira_has_graph", len(j_nodes) > 0, f"n={len(j_nodes)}")
 
     # ── 4. Confluence public (Apache cwiki) ──────────────────────
     print("\n## 4 - Confluence public (cwiki.apache.org)")
     if os.environ.get("PB_FORCE_FEED_SKIP_CONFLUENCE") in ("1", "true", "yes"):
-        gate("confluence_feed", True, "skipped", hard=False)
-        feeds["sources"]["confluence"] = {"skipped": True}
+        gate("confluence_feed", False, "PB_FORCE_FEED_SKIP_CONFLUENCE set — skip banned under zero-soft")
+        feeds["sources"]["confluence"] = {"skipped": True, "fail": True}
     else:
         r = _py_run(
             [
@@ -275,15 +275,14 @@ def main() -> int:
             "confluence_ingested_nodes",
             len(c_nodes) > 0 or r.get("ok"),
             f"nodes={len(c_nodes)} rc={r.get('rc')}",
-            hard=False,
         )
-        gate("confluence_has_graph", len(c_nodes) > 0, f"n={len(c_nodes)}", hard=False)
+        gate("confluence_has_graph", len(c_nodes) > 0, f"n={len(c_nodes)}")
 
     # ── 5. Graph must have grown; RAG retrieve works ─────────────
     print("\n## 5 - Graph + RAG retrieve after force-feed")
     nodes = load_all_nodes()
     gate("graph_nodes_gt0", len(nodes) > 0, f"n={len(nodes)}")
-    gate("graph_nodes_gt10", len(nodes) >= 10, f"n={len(nodes)}", hard=False)
+    gate("graph_nodes_gt10", len(nodes) >= 10, f"n={len(nodes)}")
 
     sources = {}
     for n in nodes:
@@ -294,8 +293,8 @@ def main() -> int:
 
     # at least 2 distinct public sources preferred
     publicish = {k for k in sources if k.lower() in ("gitlab", "github", "jira", "confluence") or "gitlab" in k.lower() or "github" in k.lower()}
-    gate("multi_source_graph", len(publicish) >= 1, f"sources={sorted(publicish)}", hard=False)
-    gate("multi_source_2plus", len(publicish) >= 2, f"sources={sorted(publicish)}", hard=False)
+    gate("multi_source_graph", len(publicish) >= 1, f"sources={sorted(publicish)}")
+    gate("multi_source_2plus", len(publicish) >= 2, f"sources={sorted(publicish)}")
 
     # retrieve probe
     try:
@@ -317,7 +316,7 @@ def main() -> int:
         ],
         timeout=180,
     )
-    gate("concert_rc0", r.get("ok") or r.get("rc") == 0, (r.get("stderr") or "")[:160], hard=False)
+    gate("concert_rc0", r.get("ok") or r.get("rc") == 0, (r.get("stderr") or "")[:160])
     concert: dict[str, Any] = {}
     out = (r.get("stdout") or "").strip()
     if out.startswith("{"):
@@ -330,7 +329,6 @@ def main() -> int:
         "concert_retrieve_hits",
         int(ret.get("hit_count") or 0) > 0 or bool(ret.get("evidence")),
         str(ret.get("hit_count")),
-        hard=False,
     )
 
     # reindex soft
@@ -338,9 +336,9 @@ def main() -> int:
         from vector_manager import reindex_all
 
         ri = reindex_all()
-        gate("reindex", True, str(ri)[:80], hard=False)
+        gate("reindex", True, str(ri)[:80])
     except Exception as e:
-        gate("reindex", False, str(e), hard=False)
+        gate("reindex", False, str(e))
 
     feeds["pass"] = PASS
     feeds["fail"] = FAIL
@@ -355,13 +353,11 @@ def main() -> int:
     except Exception:
         pass
 
-    # Hard fail only if NOTHING landed and retrieve dead
-    hard_empty = len(nodes) == 0
+    # ZERO SOFT: any gate fail OR empty graph OR <2 public sources = RED
     print("\n" + "=" * 76)
     print(f" CI FORCE-FEED: pass={PASS} fail={FAIL} graph_nodes={len(nodes)} sources={feeds.get('graph_source_counts')}")
-    if hard_empty:
+    if len(nodes) == 0:
         print(" RED - zero nodes after force-feed (network blocked or crawlers broken)")
-        # beast heal attempt
         print(" BEAST HEAL - retry crawl_public --all tiny")
         _py_run(
             [
@@ -382,11 +378,20 @@ def main() -> int:
         if len(nodes2) == 0:
             return 1
         print(f" HEAL recovered nodes={len(nodes2)}")
-        return 0
-    if FAIL > 3 and len(publicish) == 0:
-        print(" RED - no public sources landed")
+        # re-evaluate after heal still requires zero FAIL on gates already recorded
+    if FAIL > 0:
+        print(f" RED - {FAIL} hard gate failure(s) (zero-soft law — no fail-but-green)")
+        for row in RESULTS:
+            if not row.get("ok"):
+                print(f"   FAIL {row.get('name')}: {str(row.get('detail') or '')[:160]}")
         return 1
-    print(" GREEN - public OSS force-feed exercised crawl/ingest/RAG")
+    if len(publicish) < 2:
+        print(f" RED - need ≥2 public sources, got {sorted(publicish)}")
+        return 1
+    if len(nodes) < 10:
+        print(f" RED - need ≥10 graph nodes, got {len(nodes)}")
+        return 1
+    print(" GREEN - public OSS force-feed exercised crawl/ingest/RAG (zero soft)")
     return 0
 
 

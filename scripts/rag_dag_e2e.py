@@ -31,13 +31,15 @@ RESULTS: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
+    """ZERO SOFT: every failure is a FAIL. hard= kwarg ignored."""
     global PASS, FAIL
+    hard = True
     if ok:
         PASS += 1
-    elif hard:
+    else:
         FAIL += 1
-    RESULTS.append({"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:400]})
-    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    RESULTS.append({"name": name, "ok": bool(ok), "hard": True, "detail": str(detail)[:400]})
+    mark = "OK" if ok else "FAIL"
     extra = f" - {detail[:160]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
 
@@ -186,11 +188,10 @@ def main() -> int:
             "context_mentions_evidence_or_token",
             token in ctx or nid in ctx or "EVIDENCE" in ctx.upper() or "node" in ctx.lower() or len(eids) > 0,
             ctx[:120],
-            hard=False,
         )
         gate("final_ok_key", "final_ok" in concert)
         # final_ok may be false if critic strict - still a valid DAG run
-        gate("final_ok_bool", isinstance(concert.get("final_ok"), bool), str(concert.get("final_ok")), hard=False)
+        gate("final_ok_bool", isinstance(concert.get("final_ok"), bool), str(concert.get("final_ok")))
 
         # Persist last_dag like production
         write_json(

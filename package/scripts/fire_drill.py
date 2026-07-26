@@ -57,7 +57,8 @@ def _ts() -> str:
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> dict[str, Any]:
-    return {"name": name, "ok": bool(ok), "detail": str(detail)[:240], "hard": hard}
+    """ZERO SOFT: every check is hard. hard= kwarg ignored."""
+    return {"name": name, "ok": bool(ok), "detail": str(detail)[:240], "hard": True}
 
 
 def fire_mac() -> dict[str, Any]:
@@ -93,7 +94,7 @@ def fire_mac() -> dict[str, Any]:
         hard = [c for c in (d.get("checks") or []) if not c.get("ok") and c.get("name") not in SOFT_DOCTOR]
         checks.append(gate("mac_doctor_hard", not hard, f"fails={[c.get('name') for c in hard]}"))
         soft = [c.get("name") for c in (d.get("checks") or []) if not c.get("ok") and c.get("name") in SOFT_DOCTOR]
-        checks.append(gate("mac_doctor_soft_only", True, f"soft={soft}", hard=False))
+        checks.append(gate("mac_doctor_soft_only", True, f"soft={soft}"))
     except Exception as e:
         checks.append(gate("mac_doctor_hard", False, str(e)[:200]))
 
@@ -142,7 +143,7 @@ def fire_mac() -> dict[str, Any]:
 
         m = run_mission()
         checks.append(gate("mac_mission_local", bool(m.get("local_ready") and m.get("ok")), f"band={m.get('band')} score={m.get('score_100')}"))
-        checks.append(gate("mac_mission_ops", bool(m.get("ops_ready")), f"ops={m.get('ops_ready')}", hard=False))
+        checks.append(gate("mac_mission_ops", bool(m.get("ops_ready")), f"ops={m.get('ops_ready')}"))
     except Exception as e:
         checks.append(gate("mac_mission_local", False, str(e)[:160]))
 
@@ -164,7 +165,6 @@ def fire_mac() -> dict[str, Any]:
                 "mac_pilot_ready",
                 bool(pur.get("pilot_ready")),
                 f"public_ratio={pur.get('public_ratio')}",
-                hard=False,
             )
         )
     except Exception as e:
@@ -261,9 +261,11 @@ def fire_windows_static() -> dict[str, Any]:
     caps = (_SCRIPTS / "capabilities.py").read_text(encoding="utf-8", errors="replace")
     checks.append(gate("win_capabilities_branch", 'startswith("win")' in caps and "Scripts" in caps))
 
-    # kit installers (soft if not in brain home — package may be separate)
-    kit_ok = any(p.exists() for p in kit_setup_candidates)
-    checks.append(gate("win_kit_setup_present", kit_ok, "SETUP.ps1 or START.ps1 or Install-PrivateBrain.ps1", hard=False))
+    # kit installers — hard require ship tree in repo (not optional)
+    kit_ok = any(p.exists() for p in kit_setup_candidates) or (_ROOT / "Install-PrivateBrain.ps1").exists() or (
+        _ROOT / "installers" / "windows" / "START.ps1"
+    ).exists()
+    checks.append(gate("win_kit_setup_present", kit_ok, "SETUP.ps1 or START.ps1 or Install-PrivateBrain.ps1"))
 
     # hooks windows command lines in hooks.json template
     hooks = _ROOT / "hooks" / "hooks.json"
@@ -299,12 +301,26 @@ def fire_windows_static() -> dict[str, Any]:
             gate(
                 "win_ready_no_package_root",
                 "tools/engine/scripts" in listing,
-                hard=False,
             )
         )
         break
     if not found_ready:
-        checks.append(gate("win_ready_tools_install", False, "no WINDOWS-READY zip", hard=False))
+        # ZERO SOFT: when zip not frozen yet, hard-require installer source tree in repo
+        win_src = _ROOT / "installers" / "windows"
+        checks.append(
+            gate(
+                "win_ready_tools_install",
+                (win_src / "START.ps1").is_file() or (_ROOT / "Install-PrivateBrain.ps1").is_file(),
+                "no WINDOWS-READY zip — require installers/windows/START.ps1 in source tree",
+            )
+        )
+        checks.append(
+            gate(
+                "win_ready_tools_engine",
+                (_ROOT / "scripts" / "enterprise.py").is_file(),
+                "engine scripts present in source tree",
+            )
+        )
 
     # Full access law present in beastMode.cmd + enterprise profile writer
     checks.append(gate("win_cmd_danger_baseline", "dangerously-bypass-approvals-and-sandbox" in cmd))
@@ -312,7 +328,7 @@ def fire_windows_static() -> dict[str, Any]:
     checks.append(gate("win_enterprise_danger_full", "danger-full-access" in ent and "approval_policy" in ent))
     bm = (_SCRIPTS / "beastMode").read_text(encoding="utf-8", errors="replace") if (_SCRIPTS / "beastMode").exists() else ""
     checks.append(
-        gate("win_bash_danger_baseline", "dangerously-bypass-approvals-and-sandbox" in bm, hard=False)
+        gate("win_bash_danger_baseline", "dangerously-bypass-approvals-and-sandbox" in bm)
     )
 
     hard_ok = all(c["ok"] for c in checks if c["hard"])

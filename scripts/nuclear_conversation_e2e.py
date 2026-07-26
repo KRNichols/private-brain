@@ -36,20 +36,20 @@ RESULTS: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> bool:
+    """ZERO SOFT: every failure is a FAIL. hard= kwarg ignored. SOFT abolished."""
     global PASS, FAIL, SOFT
+    hard = True  # law — no soft-pass
+    SOFT = 0
     if ok:
         PASS += 1
         status = "PASS"
-    elif hard:
+    else:
         FAIL += 1
         status = "FAIL"
-    else:
-        SOFT += 1
-        status = "SOFT"
     RESULTS.append(
-        {"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:500], "status": status}
+        {"name": name, "ok": bool(ok), "hard": True, "detail": str(detail)[:500], "status": status}
     )
-    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    mark = "OK" if ok else "FAIL"
     extra = f" - {str(detail)[:160]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
     return bool(ok)
@@ -402,7 +402,7 @@ def main() -> int:
                 pass
         gate("N5/concert_json", bool(concert), (r.stdout or "")[:80])
         for stg in ("retrieve", "validate", "synthesize", "critic", "boot"):
-            gate(f"N5/stage_{stg}", stg in concert or (concert.get("stages_order") and True), hard=False)
+            gate(f"N5/stage_{stg}", stg in concert or (concert.get("stages_order") and True))
         ret = concert.get("retrieve") or {}
         eids = [str(e.get("id")) for e in (ret.get("evidence") or []) if isinstance(e, dict)]
         gate(
@@ -446,7 +446,6 @@ def main() -> int:
                 f"N5/topic_{label}",
                 any(needle in x for x in e2) or (c2.get("retrieve") or {}).get("hit_count", 0) > 0 or rr.returncode == 0,
                 f"ids={e2[:4]}",
-                hard=False,
             )
 
         # ══════════════════════════════════════════════════════════
@@ -602,16 +601,16 @@ def main() -> int:
             out = _hook(brain, env, "user_prompt_submit.py", {"prompt": phrase})
             blob = (_inject(out) + json.dumps(out)).lower()
             hit = any(n in blob for n in needles) or len(_inject(out)) > 10
-            gate(f"N8/router[{phrase[:20]}]", hit, blob[:140], hard=False)
+            gate(f"N8/router[{phrase[:20]}]", hit, blob[:140])
 
         # import router directly for hard match smoke
         try:
             from conversation_router import route  # type: ignore
 
             hit = route("fire drill")
-            gate("N8/route_fire_drill_matched", bool(hit and hit.get("matched")), str(hit)[:100], hard=False)
+            gate("N8/route_fire_drill_matched", bool(hit and hit.get("matched")), str(hit)[:100])
         except Exception as e:
-            gate("N8/route_fire_drill_matched", False, str(e), hard=False)
+            gate("N8/route_fire_drill_matched", False, str(e))
 
         # ══════════════════════════════════════════════════════════
         # N9 - Organism / day1 / autopilot / fire_drill / nuclear soft
@@ -624,16 +623,15 @@ def main() -> int:
             "N9/organism_runs",
             r.returncode in (0, 1) and ("ORGANISM" in (r.stdout or "").upper() or "ALIVE" in (r.stdout or "").upper() or r.returncode == 0),
             f"rc={r.returncode} {(r.stderr or '')[:80]}",
-            hard=False,
         )
 
         day1 = brain / "scripts" / "day1_first_start.py"
         r = _py(env, str(day1), "--yes", "--route", "headless", timeout=90, cwd=brain)
-        gate("N9/day1_headless", r.returncode == 0, (r.stderr or r.stdout or "")[:120], hard=False)
+        gate("N9/day1_headless", r.returncode == 0, (r.stderr or r.stdout or "")[:120])
 
         fd = brain / "scripts" / "fire_drill.py"
         r = _py(env, str(fd), timeout=300, cwd=brain)
-        gate("N9/fire_drill_runs", r.returncode in (0, 1), f"rc={r.returncode}", hard=False)
+        gate("N9/fire_drill_runs", r.returncode in (0, 1), f"rc={r.returncode}")
 
         try:
             from capabilities import self_repair  # type: ignore
@@ -644,9 +642,9 @@ def main() -> int:
             try:
                 import capabilities  # type: ignore
 
-                gate("N9/capabilities_self_repair", True, f"import ok {e}", hard=False)
+                gate("N9/capabilities_self_repair", True, f"import ok {e}")
             except Exception as e2:
-                gate("N9/capabilities_self_repair", False, str(e2), hard=False)
+                gate("N9/capabilities_self_repair", False, str(e2))
 
         try:
             from golden_config import write_golden, load_compact_for_inject  # type: ignore
@@ -655,14 +653,14 @@ def main() -> int:
             c = load_compact_for_inject(max_chars=2000)
             gate("N9/golden_config", bool(g) or bool(c), str(type(g)))
         except Exception as e:
-            gate("N9/golden_config", False, str(e), hard=False)
+            gate("N9/golden_config", False, str(e))
 
         # brain_init / status soft
         for script in ("brain_init.py", "brain_status.py", "brain_snapshot.py"):
             sp = brain / "scripts" / script
             if sp.is_file():
                 rr = _py(env, str(sp), timeout=60, cwd=brain)
-                gate(f"N9/{script}", rr.returncode in (0, 1), f"rc={rr.returncode}", hard=False)
+                gate(f"N9/{script}", rr.returncode in (0, 1), f"rc={rr.returncode}")
 
         # ══════════════════════════════════════════════════════════
         # N10 - GodsEye + Corporate Library + profiles
@@ -673,9 +671,9 @@ def main() -> int:
         if gl.is_file():
             t = gl.read_text(encoding="utf-8", errors="replace")
             gate("N10/simple_mode", "simple" in t.lower())
-            gate("N10/triangle_fan_or_disc", "TRIANGLE_FAN" in t or "_draw_soft_disc" in t, hard=False)
+            gate("N10/triangle_fan_or_disc", "TRIANGLE_FAN" in t or "_draw_soft_disc" in t)
         else:
-            gate("N10/simple_mode", False, "no graph_gl", hard=False)
+            gate("N10/simple_mode", False, "no graph_gl")
 
         os.environ.pop("PIP_INDEX_URL", None)
         os.environ.pop("PB_PIP_INDEX_URL", None)
@@ -716,7 +714,7 @@ def main() -> int:
                 if bad in txt and "sanitiz" not in txt.lower():
                     # allow if only in historical comments? hard fail for public
                     dirty.append(f"{rel}:{bad}")
-        gate("N10/sanitized_public_terms", len(dirty) == 0, str(dirty[:8]), hard=False)
+        gate("N10/sanitized_public_terms", len(dirty) == 0, str(dirty[:8]))
 
         # ══════════════════════════════════════════════════════════
         # N11 - Nested conversation_e2e + nuclear_x10 soft presence

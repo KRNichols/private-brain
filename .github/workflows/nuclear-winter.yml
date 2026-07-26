@@ -23,6 +23,9 @@ env:
   PB_NO_OPEN_CODEX: "1"
   PB_GODSEYE: "0"
   PB_NUCLEAR_HEADLESS: "1"
+  PB_ZERO_SOFT: "1"
+  PB_COVERAGE_FULL: "1"
+  PB_COVERAGE_MIN: "20"
   PYGAME_HIDE_SUPPORT_PROMPT: "1"
   PYTHONPATH: ${{ github.workspace }}/scripts:${{ github.workspace }}
 
@@ -172,32 +175,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: nuclear_x10
+      - name: nuclear_x10 (ZERO SOFT)
         shell: bash
         env:
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_ZERO_SOFT: "1"
         run: |
-          # Soft-ok in empty workspace for known soft law fails; hard syntax already covered
-          python scripts/nuclear_x10.py || {
-            echo "nuclear_x10 non-zero — check report (soft in CI empty brain)"
-            # fail only if conversation/godseye live gates missing
-            python - <<'PY'
-          import json, pathlib, sys
-          p=pathlib.Path(".brain/state/NUCLEAR_X10.json")
-          if not p.exists():
-            print("no report"); sys.exit(0)
-          d=json.loads(p.read_text())
-          fails=[x for x in (d.get("results") or d.get("fails") or []) if isinstance(x,dict) and not x.get("ok") and x.get("hard",True)]
-          # also scan string fails
-          print("report keys", list(d)[:20])
-          sys.exit(0)
-          PY
-          }
-      - name: fire_drill
+          set -e
+          python scripts/nuclear_x10.py
+      - name: fire_drill (ZERO SOFT)
         shell: bash
         env:
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
-        run: python scripts/fire_drill.py || true
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_ZERO_SOFT: "1"
+        run: |
+          set -e
+          python scripts/fire_drill.py
       - name: GodsEye always-live smoke (no display)
         shell: bash
         run: |
@@ -513,15 +510,20 @@ jobs:
           echo "feed=${{ needs.force-feed-public.result }}"
           echo "cov=${{ needs.coverage-judge.result }}"
           echo "law=${{ needs.sanitize-and-law.result }}"
-          # fail if any required failed
-          for r in "${{ needs.py-compile.result }}" "${{ needs.nuclear-convo.result }}" "${{ needs.rag-dag.result }}" "${{ needs.day1-kingdom.result }}" "${{ needs.force-feed-public.result }}" "${{ needs.coverage-judge.result }}" "${{ needs.sanitize-and-law.result }}" "${{ needs.freeze-and-boot.result }}"; do
+          # ZERO SOFT: every upstream including nuclear-x10 must be success
+          for r in \
+            "${{ needs.py-compile.result }}" \
+            "${{ needs.nuclear-convo.result }}" \
+            "${{ needs.nuclear-x10.result }}" \
+            "${{ needs.rag-dag.result }}" \
+            "${{ needs.day1-kingdom.result }}" \
+            "${{ needs.force-feed-public.result }}" \
+            "${{ needs.coverage-judge.result }}" \
+            "${{ needs.sanitize-and-law.result }}" \
+            "${{ needs.freeze-and-boot.result }}"; do
             if [ "$r" != "success" ]; then
-              echo "NUCLEAR WINTER RED — upstream $r"
+              echo "NUCLEAR WINTER RED — upstream not success: $r"
               exit 1
             fi
           done
-          # x10 soft-allowed failure in empty workspace
-          if [ "${{ needs.nuclear-x10.result }}" = "failure" ]; then
-            echo "WARN nuclear-x10 failed (often soft in empty CI) — convo+boot must be green"
-          fi
-          echo "NUCLEAR WINTER GREEN — ready to go"
+          echo "NUCLEAR WINTER GREEN — every suite hard-green (zero soft)"

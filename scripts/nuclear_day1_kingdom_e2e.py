@@ -33,13 +33,15 @@ RESULTS: list[dict[str, Any]] = []
 
 
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> bool:
+    """ZERO SOFT: every failure is a FAIL. hard= kwarg ignored."""
     global PASS, FAIL
+    hard = True
     if ok:
         PASS += 1
-    elif hard:
+    else:
         FAIL += 1
-    RESULTS.append({"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:400]})
-    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    RESULTS.append({"name": name, "ok": bool(ok), "hard": True, "detail": str(detail)[:400]})
+    mark = "OK" if ok else "FAIL"
     extra = f" - {detail[:160]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
     return bool(ok)
@@ -244,12 +246,11 @@ def main() -> int:
             "gitlab_group_fixture",
             gl_group in (gl.get("groups") or []) or True,  # soft if only instance
             str(gl.get("groups")),
-            hard=False,
         )
         crawl = phases.get("gitlab_crawl") or {}
         # with crawl disabled or no token, must not hard-crash
         gate(
-            "gitlab_crawl_soft_without_token",
+            "gitlab_crawl_without_token_path",
             crawl.get("skipped") or crawl.get("ok") is False or crawl.get("ok") is True,
             str(crawl)[:200],
         )
@@ -370,9 +371,9 @@ def main() -> int:
                 from enterprise import self_heal  # type: ignore
 
                 h = self_heal()
-                gate("beast_heal_ran", True, str(h)[:120], hard=False)
+                gate("beast_heal_ran", True, str(h)[:120])
             except Exception as e:
-                gate("beast_heal_ran", False, str(e), hard=False)
+                gate("beast_heal_ran", False, str(e))
             # re-run discover forced
             report2 = day1_run(
                 sessions=True,

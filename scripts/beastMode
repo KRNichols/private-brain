@@ -568,7 +568,19 @@ do
     while IFS= read -r line || [[ -n "$line" ]]; do
       case "$line" in
         ''|\#*) continue ;;
-        export\ *) eval "$line" 2>/dev/null || true ;;
+        export\ *)
+          # ZERO SOFT / safe: parse KEY=VALUE without eval
+          rest="${line#export }"
+          key="${rest%%=*}"
+          val="${rest#*=}"
+          key="${key// /}"
+          # strip surrounding quotes
+          if [[ "$val" == \"*\" ]]; then val="${val:1:${#val}-2}"; fi
+          if [[ "$val" == \'*\' ]]; then val="${val:1:${#val}-2}"; fi
+          if [[ -n "$key" && "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            export "$key=$val" 2>/dev/null || true
+          fi
+          ;;
       esac
     done < "$envf"
     set -u
