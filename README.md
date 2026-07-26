@@ -444,3 +444,16 @@ plus Codex hooks `UserPromptSubmit` → `dag_turn` and `Stop` → `citation_gate
 
 No OpenAI key required for these stages (local graph retrieve + rules). Live LLM optional later via `PB_E2E_REAL_CODEX=1`.
 
+### CI force-feed (public OSS)
+
+Nuclear Winter runs `scripts/ci_force_feed_public.py` on free runners with **real** public data:
+
+| Source | Default target |
+|--------|----------------|
+| GitLab | gitlab.com / gitlab-org (bounded) |
+| GitHub | cli/cli or octocat (bounded) |
+| Jira | issues.apache.org/jira |
+| Confluence | cwiki.apache.org/confluence |
+
+Tiny limits for CI time. On failure: beast heal + retry. Report: `.brain/state/CI_FORCE_FEED_PUBLIC.json`.
+

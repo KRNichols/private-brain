@@ -226,6 +226,65 @@ jobs:
 
 
   # ── Day-1 Kingdom (sessions · library · gateway · gitlab · neo4j) ──
+
+  # ── Force-feed public OSS (real network crawl) ─────────────────
+  force-feed-public:
+    name: force-feed (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [py-compile]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Force-feed public GitLab/GitHub/Jira/Confluence
+        shell: bash
+        env:
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_FORCE_FEED_TINY: "1"
+          # optional: secrets.GITHUB_TOKEN helps GitHub rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/ci_force_feed_public.py
+      - name: Unleash beast if force-feed red
+        if: failure()
+        shell: bash
+        env:
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0,"scripts")
+          os.environ["PB_ENTERPRISE"]="1"
+          print("BEAST — heal + smaller force-feed retry")
+          try:
+            from enterprise import self_heal, ensure_enterprise_profile
+            ensure_enterprise_profile(); print(self_heal())
+          except Exception as e:
+            print("heal soft", e)
+          os.environ["PB_FORCE_FEED_TINY"]="1"
+          # skip slow sources on retry, keep jira+github
+          os.environ["PB_FORCE_FEED_SKIP_CONFLUENCE"]="1"
+          import runpy
+          sys.argv=["ci_force_feed_public.py"]
+          runpy.run_path("scripts/ci_force_feed_public.py", run_name="__main__")
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: winter-force-feed-${{ matrix.os }}-${{ github.sha }}
+          path: .brain/state/CI_FORCE_FEED_PUBLIC.json
+          if-no-files-found: warn
+
   day1-kingdom:
     name: day1-kingdom (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -369,7 +428,7 @@ jobs:
   nuclear-winter-green:
     name: NUCLEAR WINTER GREEN
     runs-on: ubuntu-latest
-    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, sanitize-and-law]
+    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, force-feed-public, sanitize-and-law]
     if: always()
     steps:
       - name: Require all upstream green
@@ -380,9 +439,10 @@ jobs:
           echo "boot=${{ needs.freeze-and-boot.result }}"
           echo "rag=${{ needs.rag-dag.result }}"
           echo "kingdom=${{ needs.day1-kingdom.result }}"
+          echo "feed=${{ needs.force-feed-public.result }}"
           echo "law=${{ needs.sanitize-and-law.result }}"
           # fail if any required failed
-          for r in "${{ needs.py-compile.result }}" "${{ needs.nuclear-convo.result }}" "${{ needs.rag-dag.result }}" "${{ needs.day1-kingdom.result }}" "${{ needs.sanitize-and-law.result }}" "${{ needs.freeze-and-boot.result }}"; do
+          for r in "${{ needs.py-compile.result }}" "${{ needs.nuclear-convo.result }}" "${{ needs.rag-dag.result }}" "${{ needs.day1-kingdom.result }}" "${{ needs.force-feed-public.result }}" "${{ needs.sanitize-and-law.result }}" "${{ needs.freeze-and-boot.result }}"; do
             if [ "$r" != "success" ]; then
               echo "NUCLEAR WINTER RED — upstream $r"
               exit 1

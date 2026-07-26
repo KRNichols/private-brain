@@ -360,7 +360,7 @@ def main() -> int:
         "brutal_suite.py","capabilities.py","config_of_config.py","conversation_router.py",
         "day1_first_start.py","enterprise.py","fire_drill.py","freeze_for_corporate","godseye.py",
         "golden_config.py","heal_ledger.py","ingest_url.py","install_hooks.py","mission_monday.py",
-        "nuclear_zero_fail.py","nuclear_x10.py","ops_metrics.py","organism.py","orchestrate.py","conversation_e2e.py","nuclear_conversation_e2e.py","day1_auto_discover.py","nuclear_day1_kingdom_e2e.py","rag_dag_e2e.py","conversation_e2e.py",
+        "nuclear_zero_fail.py","nuclear_x10.py","ops_metrics.py","organism.py","orchestrate.py","conversation_e2e.py","nuclear_conversation_e2e.py","day1_auto_discover.py","nuclear_day1_kingdom_e2e.py","rag_dag_e2e.py","ci_force_feed_public.py","conversation_e2e.py",
         "phase2_handoff.py","secrets_store.py","smart_discover.py","vector_manager.py",
         "validate_enterprise.py","beastMode","beastMode.cmd",
     ]

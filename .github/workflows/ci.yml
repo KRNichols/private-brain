@@ -133,5 +133,23 @@ jobs:
           python scripts/nuclear_conversation_e2e.py
           python scripts/conversation_e2e.py
 
-
+  force-feed-public-smoke:
+    name: force-feed public OSS
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Force-feed public sources
+        env:
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_FORCE_FEED_TINY: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
+          python scripts/ci_force_feed_public.py
 
