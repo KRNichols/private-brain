@@ -328,3 +328,12 @@ Report: `.brain/state/NUCLEAR_CONVERSATION_E2E.json`
 
 Continuous **live** motion by default (no auto-settle freeze). Space only **pauses**. Opt-in old settle: `PB_GODSEYE_ALLOW_SETTLE=1`.
 
+### RAG-DAG on runners
+
+Yes — free runners execute the **real** multi-agent DAG:
+
+`scripts/rag_dag_e2e.py` → `orchestrate.py concert` (boot → retrieve → validate → synthesize → critic → …)
+plus Codex hooks `UserPromptSubmit` → `dag_turn` and `Stop` → `citation_gate`.
+
+No OpenAI key required for these stages (local graph retrieve + rules). Live LLM optional later via `PB_E2E_REAL_CODEX=1`.
+

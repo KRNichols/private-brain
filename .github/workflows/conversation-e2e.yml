@@ -56,6 +56,7 @@ jobs:
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
           # Primary: nuclear conversational suite (every surface)
+          python scripts/rag_dag_e2e.py
           python scripts/nuclear_conversation_e2e.py
           # Secondary: deeper multi-turn SimCodex (if separate script still present)
           if [ -f scripts/conversation_e2e.py ]; then

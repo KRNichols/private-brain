@@ -223,6 +223,36 @@ jobs:
             dist/READY.sha256
           if-no-files-found: warn
 
+
+  # ── RAG-DAG (real orchestrate concert + hooks) ─────────────────
+  rag-dag:
+    name: rag-dag (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [py-compile]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: RAG-DAG E2E (orchestrate concert + hooks)
+        shell: bash
+        env:
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/rag_dag_e2e.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: winter-rag-dag-${{ matrix.os }}-${{ github.sha }}
+          path: .brain/state/RAG_DAG_E2E.json
+          if-no-files-found: warn
+
   # ── 5. Sanitization + path law ─────────────────────────────────
   sanitize-and-law:
     name: sanitize+law
@@ -279,7 +309,7 @@ jobs:
   nuclear-winter-green:
     name: NUCLEAR WINTER GREEN
     runs-on: ubuntu-latest
-    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, sanitize-and-law]
+    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, sanitize-and-law]
     if: always()
     steps:
       - name: Require all upstream green
@@ -288,9 +318,10 @@ jobs:
           echo "convo=${{ needs.nuclear-convo.result }}"
           echo "x10=${{ needs.nuclear-x10.result }}"
           echo "boot=${{ needs.freeze-and-boot.result }}"
+          echo "rag=${{ needs.rag-dag.result }}"
           echo "law=${{ needs.sanitize-and-law.result }}"
           # fail if any required failed
-          for r in "${{ needs.py-compile.result }}" "${{ needs.nuclear-convo.result }}" "${{ needs.sanitize-and-law.result }}" "${{ needs.freeze-and-boot.result }}"; do
+          for r in "${{ needs.py-compile.result }}" "${{ needs.nuclear-convo.result }}" "${{ needs.rag-dag.result }}" "${{ needs.sanitize-and-law.result }}" "${{ needs.freeze-and-boot.result }}"; do
             if [ "$r" != "success" ]; then
               echo "NUCLEAR WINTER RED — upstream $r"
               exit 1
