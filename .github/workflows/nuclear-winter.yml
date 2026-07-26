@@ -382,7 +382,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Lint sanitized branding (no SRES/BSF/Boeing)
+      - name: Lint sanitized branding (public vocabulary only)
         run: |
           python scripts/lint_sanitized_branding.py
 

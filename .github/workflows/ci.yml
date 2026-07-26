@@ -161,6 +161,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Fail on SRES/BSF/Boeing/Artifactory
+      - name: Fail on residual customer branding tokens
         run: python scripts/lint_sanitized_branding.py
 

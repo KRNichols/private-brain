@@ -34,6 +34,20 @@ def _j(p: Path) -> Any:
 
 
 def write_handoff() -> dict[str, Any]:
+    # Phase-2 requires golden map (Phase-1 law) — write if missing
+    try:
+        from golden_config import write_golden
+        st = _state() if "_state" in dir() else None
+        from brain_lib import STATE_DIR
+        if not (STATE_DIR / "golden_config.json").exists() or not (STATE_DIR / "golden_join.json").exists():
+            write_golden()
+    except Exception:
+        try:
+            from golden_config import write_golden
+            write_golden()
+        except Exception:
+            pass
+
     st = _ROOT / ".brain" / "state"
     org = _j(st / "organism.json")
     ops = _j(st / "ops_metrics.json")

@@ -13,3 +13,4 @@ dist/_staging_*
 *.egg-info/
 .pytest_cache/
 dist/
+images/

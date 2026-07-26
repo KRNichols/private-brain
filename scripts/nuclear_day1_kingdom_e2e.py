@@ -283,6 +283,23 @@ def main() -> int:
         # ── Report files ──
         gate("report_json", (STATE_DIR / "day1_auto_discover.json").is_file())
         gate("compact_json", (STATE_DIR / "day1_auto_discover_compact.json").is_file())
+        # Golden config unlocks Phase-2
+        try:
+            from golden_config import write_golden
+            g = write_golden()
+            gate("golden_written", bool(g.get("paths")), str(g.get("paths"))[:120])
+            gate("golden_join_exists", Path(g.get("coworker_join") or "").is_file() or (STATE_DIR / "golden_join.json").is_file())
+            gate("golden_config_json", (STATE_DIR / "golden_config.json").is_file())
+            # Phase-2 handoff can start
+            from phase2_handoff import write_handoff
+            h = write_handoff()
+            gate("phase2_handoff_starts", bool(h.get("paths") or h.get("preview") is not None or h), str(h)[:120])
+        except Exception as e:
+            gate("golden_written", False, str(e))
+            gate("golden_join_exists", False, str(e))
+            gate("golden_config_json", False, str(e))
+            gate("phase2_handoff_starts", False, str(e))
+
 
         # ── Script inventory ──
         gate("day1_auto_discover_script", (brain / "scripts" / "day1_auto_discover.py").is_file())

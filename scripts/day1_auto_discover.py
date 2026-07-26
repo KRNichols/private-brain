@@ -727,6 +727,25 @@ def run(
     }
     write_json(STATE_DIR / "day1_auto_discover_compact.json", compact)
 
+    # Golden config = Phase-1 map law so Phase-2 can start (no secrets)
+    try:
+        from golden_config import write_golden
+
+        g = write_golden(compact_chars=int(os.environ.get("PB_GOLDEN_COMPACT_CHARS", "12000")))
+        report["phases"]["golden"] = {
+            "ok": True,
+            "complete": g.get("complete"),
+            "paths": g.get("paths"),
+            "coworker_join": g.get("coworker_join"),
+        }
+        _log(
+            f"golden: written join={g.get('coworker_join')} complete={g.get('complete')}",
+            quiet,
+        )
+    except Exception as e:
+        report["phases"]["golden"] = {"ok": False, "error": str(e)[:200]}
+        _log(f"golden: soft-fail {e}", quiet)
+
     if not quiet:
         print("----------------------------------------------")
         print(f" report: {STATE_DIR / 'day1_auto_discover.json'}")
