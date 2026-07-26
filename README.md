@@ -1,95 +1,192 @@
 # Private Brain
 
-[![CI](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml)
-[![Windows first-boot](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml)
-[![Mac first-boot](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml)
-[![Nuclear Winter](https://github.com/KRNichols/private-brain/actions/workflows/nuclear-winter.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/nuclear-winter.yml)
-[![Conversation E2E](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml)
+**Codex sideload.** Download your OS zip → install once → open Codex → talk.
 
-**Codex sideload.** Install once. Open Codex. Talk.  
-**Goal: real results only** — not agent counts, not token theater.
+Mac ≡ Windows. Real results only (cite-or-block). Not agent theater.
 
-Mac ≡ Windows.  
-Corporate `golden_join.json` (no secrets) goes in `tools/install/` when you have it.
+| | Download | Install |
+|--|----------|---------|
+| **Windows** | [PrivateBrain-WINDOWS-READY.zip](https://github.com/KRNichols/private-brain/releases/latest/download/PrivateBrain-WINDOWS-READY.zip) | Unzip → `tools\install\START.ps1` |
+| **Mac** | [PrivateBrain-MAC-READY.zip](https://github.com/KRNichols/private-brain/releases/latest/download/PrivateBrain-MAC-READY.zip) | Unzip → `./tools/install/START.command` |
 
-**Picture of the system:** [`DIAGRAM.md`](./DIAGRAM.md)
+**Full one-pager:** [`DOWNLOAD.md`](./DOWNLOAD.md) · **Picture:** [`DIAGRAM.md`](./DIAGRAM.md)
 
 ---
 
-## Day 1 checklist (Windows work laptop)
-
-Print this. Check boxes as you go.
-
-### 0 · Prep
-
-- [ ] Codex / ChatGPT Desktop with Codex is installed  
-- [ ] You have **`PrivateBrain-WINDOWS-READY.zip`** (or CORPORATE zip → open **`windows/`**)  
-- [ ] **Quit Codex completely**  
-- [ ] Optional: USB/copy of dirty Neo4j access notes (URI only — **tokens later in secrets store**)  
-- [ ] Optional: PDF plan file path on disk (local)  
-- [ ] Optional: real `golden_join.json` from a co-worker (no secrets) → put in `tools\install\`
-
-### 1 · Unzip — root must look like this
-
-```text
-README.md      ← this file
-DIAGRAM.md     ← one picture
-tools\         ← install + engine + planes
-```
-
-- [ ] Root is **only** those three (no random package dump)
-
-### 2 · Install once (PowerShell)
+## Windows (copy/paste)
 
 ```powershell
+# 1) Download WINDOWS-READY zip from Releases (link above)
+# 2) Unzip. Quit Codex completely.
 cd <path-to-extracted-folder>
 Set-ExecutionPolicy -Scope Process Bypass
 .\tools\install\START.ps1
+# 3) Open Codex. Talk. Beast is already on.
+# Pause: say "stop beast mode"  ·  Reopen Codex → on again
 ```
 
-- [ ] START finishes **without red fail-closed error**  
-- [ ] If asked for package route and you don’t know → **headless** is fine for Day 1  
-- [ ] Missing Corporate Library/AWS/Jira is **soft** — local brain still works  
+## Mac (copy/paste)
 
-**Mac:** `./tools/install/START.command` (same checklist).
+```bash
+# 1) Download MAC-READY zip from Releases (link above)
+# 2) Unzip. Quit Codex completely.
+cd <path-to-extracted-folder>
+chmod +x tools/install/START.command
+./tools/install/START.command
+# 3) Open Codex. Talk. Same as Windows.
+```
 
-### 3 · Open Codex and cook (no shell parade)
+## After install — done means
 
-- [ ] Open **Codex** (normal app)  
-- [ ] **Do not** type `beast mode` — it is **already on** every open  
-- [ ] Paste prompts from **Example prompts** below in order  
+- START finished without hard fail  
+- Codex opens with beast on (no daily shell launcher)  
+- Answers **cite evidence** or **refuse** — not free invent  
+- `stop beast mode` pauses this session only  
 
-### 4 · Prove memory + non-hallucination (real results)
+---
 
-- [ ] Ask something about **your** work that should hit sessions/graph  
-- [ ] Answer either **cites evidence** or **refuses / says gap** — not free invent  
-- [ ] Optional: `fire drill` → want healthy/green language, not vibes  
+## Day 1 prompt checklist (paste into Codex in order)
 
-### 5 · Optional Day‑1 intelligence tracks (when data exists)
+After START: **open Codex** (do not type beast mode — it is already on).  
+Check the box after each prompt returns something useful (or a clear refuse/gap).
 
-**Only if you have them on this laptop:**
+### Always (do these first)
 
-| Track | You have… | Goal |
-|-------|-----------|------|
-| **A. Sessions** | Past Codex chats | Brain learns what you already did |
-| **B. Neo4j** | Dirty graph DB | Profile → clean schema → keep/quarantine/reject → ingest **good only** |
-| **C. PDF plan** | Plan/requirements PDF | Read plan → keep best practice, flag/shitcan bad parts |
-| **D. Kingdom** | GitLab/Jira/Confluence URLs + tokens in **secrets store** | Real internal crawl later — not Day 1 mandatory |
+- [ ] **1 · Wake up**
+```text
+Private Brain is sideloaded. Confirm hooks are live and beast is on.
+Short status only: local ready? sessions? any hard fails?
+Real readiness only — not agent counts or tokens.
+```
 
-- [ ] Ran at least **one** of A–C with a concrete output (report, ingest count, or refuse list)  
-- [ ] Did **not** bulk-trust dirty Neo4j without a keep/reject pass  
+- [ ] **2 · Fire drill**
+```text
+Fire drill. Green or red in plain English.
+List any hard fails I must fix before I trust answers.
+```
 
-### 6 · End of Day 1 “done” definition
+- [ ] **3 · Heal if hurt**
+```text
+Heal yourself if anything is hurt. Then say only what actually changed.
+```
 
-You are done when **all** of these are true:
+- [ ] **4 · Learn my past work**
+```text
+Harvest my recent Codex sessions into the brain.
+Summarize what you actually ingested (with counts). Do not invent sessions.
+```
 
-- [ ] START installed once without hard fail  
-- [ ] Codex opens and brain is on without a daily launcher  
-- [ ] You got **at least one useful answer** grounded in local evidence **or** a clear gap list  
-- [ ] If Neo4j/PDF used: you have a **keep / quarantine / reject** outcome, not a blind dump  
-- [ ] You know: `stop beast mode` = pause RAG this chat; reopen Codex = on again  
+- [ ] **5 · What do you know about me?**
+```text
+What do you already know about my active work? Cite node_ids.
+If thin, say exactly what is missing — do not invent.
+```
 
-**Not** Day 1 success: “spun 64 agents” / “burned tokens” / “pretty graph with no proof.”
+- [ ] **6 · Prove non-hallucination**
+```text
+Answer only from evidence: what is one real thing you can prove about my work right now?
+If you cannot prove it, refuse and list the gap. Cite `node_id` or say no evidence.
+```
+
+### Optional (only if you have the data)
+
+- [ ] **7 · Dirty Neo4j (profile only — no bulk ingest)**
+```text
+I have a Neo4j database on this laptop. Data is dirty.
+Do NOT bulk ingest yet.
+1) What connection inputs do you need (secrets store — never print secrets)?
+2) When connected read-only: profile labels, rels, property shapes, sample nodes.
+3) Plain English: what is this graph trying to represent?
+4) Propose clean schema + keep / quarantine / reject rules.
+Stop after the plan. Wait for my GO before ingest.
+```
+
+- [ ] **8 · Neo4j GO (only after you approve KEEP)**
+```text
+GO: ingest only the KEEP set into Private Brain with provenance.
+Quarantine weak/public. Reject junk.
+Report: kept / quarantined / rejected counts + 5 example node_ids.
+Then: what can we prove now that we could not before?
+```
+
+- [ ] **9 · PDF plan**
+```text
+I have a plan PDF at: <FULL_PATH_TO_PDF>
+Read it. Table: KEEP | FLAG | REJECT vs Private Brain law
+(local RAG-DAG, cite-or-block, no secrets in git, conversation not flags).
+Propose Day-1..Day-5 actions from KEEP only. Do not implement the whole plan.
+```
+
+- [ ] **10 · Real work query (your domain)**
+```text
+Using only cited graph evidence: current state of <PROJECT or TICKET or THEME>?
+If thin, list exact sources or files to add — do not invent.
+```
+
+- [ ] **11 · Monday action list**
+```text
+Monday action list grounded in evidence we actually have.
+Each bullet: action + why + cite. No filler.
+```
+
+### Session controls (as needed)
+
+| You say | What happens |
+|---------|----------------|
+| `stop beast mode` | RAG off this chat only |
+| `beast mode` | RAG on again this chat |
+| `show GodsEye` | Live graph HUD (if pygame available) |
+| `show golden config` | Shared map (when golden exists) |
+| `fire drill` | Health check any day |
+
+### Day 1 done when
+
+- [ ] START installed without hard fail  
+- [ ] Prompts **1–6** done (or honest gaps)  
+- [ ] At least **one useful cited answer** or a clear gap list  
+- [ ] You know reopen Codex = beast on again  
+
+**Not done:** agent counts, token burn, pretty graph with no proof.
+
+---
+
+## Day 1 install detail (optional)
+
+### Prep
+- Codex / ChatGPT Desktop with Codex installed  
+- Your OS READY zip from [Releases](https://github.com/KRNichols/private-brain/releases/latest)  
+- Quit Codex before START  
+
+### Unzip root (only this)
+
+```text
+README.md
+DIAGRAM.md
+tools/     (or tools\ on Windows)
+```
+
+### Install
+- **Windows:** `tools\install\START.ps1`  
+- **Mac:** `tools/install/START.command`  
+
+Missing Corporate Library / AWS is **soft** — local brain still works.  
+Optional: drop `golden_join.json` (no secrets) in `tools/install/`.
+
+---
+
+## What this repo is (developers)
+
+| Path | Who cares |
+|------|-----------|
+| **Releases · READY zips** | **You** (install) |
+| `scripts/` `hooks/` | Developers / CI |
+| `installers/mac` `installers/windows` | Kit sources for freeze |
+| `package/` | Engine payload frozen into kits |
+| `.github/workflows/` | CI (do not use to install) |
+
+**Do not clone this repo to install.** Use the Windows/Mac zip.
+
+CI: [Actions](https://github.com/KRNichols/private-brain/actions) · Nuclear Winter / first-boot prove freeze → START → hooks.
 
 ---
 

@@ -87,139 +87,108 @@ You are done when **all** of these are true:
 
 ---
 
-## Example prompts (paste into Codex)
+## Day 1 prompt checklist (paste into Codex in order)
 
-Use these **in order** if you want a guided Day 1. Skip what you don’t have.  
-Tell Codex you want **artifacts and outcomes**, not process theater.
+After START: **open Codex** (do not type beast mode — it is already on).  
+Check the box after each prompt returns something useful (or a clear refuse/gap).
 
-### Block 1 — Wake and baseline (always)
+### Always (do these first)
 
+- [ ] **1 · Wake up**
 ```text
 Private Brain is sideloaded. Confirm hooks are live and beast is on.
-Give me a short status: local brain ready? sessions? purity/quarantine? any hard fails?
-I only care about real readiness — not agent counts or token use.
+Short status only: local ready? sessions? any hard fails?
+Real readiness only — not agent counts or tokens.
 ```
 
+- [ ] **2 · Fire drill**
 ```text
-Fire drill. Report green/red in plain English and list any hard fails I must fix before trusting answers.
+Fire drill. Green or red in plain English.
+List any hard fails I must fix before I trust answers.
 ```
 
+- [ ] **3 · Heal if hurt**
 ```text
-Heal yourself if anything is hurt. Then restate only what actually changed.
+Heal yourself if anything is hurt. Then say only what actually changed.
 ```
 
-### Block 2 — Learn from my work so far (always useful)
-
+- [ ] **4 · Learn my past work**
 ```text
-Harvest my recent Codex sessions into the brain. Summarize what topics you actually ingested
-(with counts). Do not invent sessions that are not on disk.
+Harvest my recent Codex sessions into the brain.
+Summarize what you actually ingested (with counts). Do not invent sessions.
 ```
 
+- [ ] **5 · What do you know about me?**
 ```text
-What do you already know about my active work? Cite node_ids. If thin, say exactly what is missing.
+What do you already know about my active work? Cite node_ids.
+If thin, say exactly what is missing — do not invent.
 ```
 
+- [ ] **6 · Prove non-hallucination**
 ```text
-Show GodsEye if available. If not, say why and continue headless — I still want graph truth in chat.
+Answer only from evidence: what is one real thing you can prove about my work right now?
+If you cannot prove it, refuse and list the gap. Cite `node_id` or say no evidence.
 ```
 
-### Block 3 — Dirty Neo4j (only if you have it)
+### Optional (only if you have the data)
 
+- [ ] **7 · Dirty Neo4j (profile only — no bulk ingest)**
 ```text
-I have a Neo4j database on this Windows laptop. Data is dirty and incomplete.
+I have a Neo4j database on this laptop. Data is dirty.
 Do NOT bulk ingest yet.
-
-1) Tell me what connection inputs you need (URI, auth via secrets store — never print secrets).
-2) When connected read-only: profile labels, rel types, property shapes, null rates, sample nodes.
-3) In plain English: what is this graph trying to represent?
-4) Propose a CLEAN schema mapped to Private Brain entities (Issue/MR/Repo/Page/Person/Chunk/etc).
-5) Output keep / quarantine / reject rules for this data.
-Stop after the profile + plan. Wait for my go before ingest.
+1) What connection inputs do you need (secrets store — never print secrets)?
+2) When connected read-only: profile labels, rels, property shapes, sample nodes.
+3) Plain English: what is this graph trying to represent?
+4) Propose clean schema + keep / quarantine / reject rules.
+Stop after the plan. Wait for my GO before ingest.
 ```
 
-```text
-Using the Neo4j profile: for each major label family, infer likely source systems
-(Jira, GitLab, Confluence, web scrape, unknown). Mark public/web-sourced material for quarantine.
-Do not fetch external URLs unless I explicitly allow an allowlisted host.
-```
-
+- [ ] **8 · Neo4j GO (only after you approve KEEP)**
 ```text
 GO: ingest only the KEEP set into Private Brain with provenance.
 Quarantine weak/public. Reject junk.
-When done: numbers kept / quarantined / rejected, and 5 example node_ids I can query.
-Reindex vectors. Then answer: what can we now prove that we could not before?
+Report: kept / quarantined / rejected counts + 5 example node_ids.
+Then: what can we prove now that we could not before?
 ```
 
-### Block 4 — PDF plan (only if you have the file)
-
+- [ ] **9 · PDF plan**
 ```text
 I have a plan PDF at: <FULL_PATH_TO_PDF>
-It is NOT set in stone. Read it.
-
-1) Summarize what it claims we should build.
-2) Compare to Private Brain best practice (local RAG-DAG, cite-or-block, US sovereign path,
-   quarantine public, golden map, conversation not flags).
-3) Table: KEEP (aligns) | FLAG (vague/risky) | REJECT (anti-pattern / conflicts with law).
-4) Propose concrete Day-1..Day-5 actions from KEEP only.
-Do not implement the whole plan. Do not pretend rejected parts are done.
+Read it. Table: KEEP | FLAG | REJECT vs Private Brain law
+(local RAG-DAG, cite-or-block, no secrets in git, conversation not flags).
+Propose Day-1..Day-5 actions from KEEP only. Do not implement the whole plan.
 ```
 
+- [ ] **10 · Real work query (your domain)**
 ```text
-From the KEEP rows of the plan: turn them into golden/map notes and ingestible brain nodes
-(tier them). Skip REJECT. For FLAG, list questions I must answer before ingest.
+Using only cited graph evidence: current state of <PROJECT or TICKET or THEME>?
+If thin, list exact sources or files to add — do not invent.
 ```
 
-### Block 5 — Neo4j + PDF together (best Day‑1 “onboarding intelligence”)
-
+- [ ] **11 · Monday action list**
 ```text
-You have (or will have) Neo4j profile + plan PDF judgment.
-Build one onboarding brief:
-- What the dirty graph is good for
-- What the plan wants
-- Intersection: data we can use NOW to serve the plan
-- Gaps: plan wants X but graph has no evidence
-- First three queries I should run that produce real work outcomes
-No agent theater. No token discussion. Artifacts only.
-```
-
-### Block 6 — Real work cooking (replace with your domain)
-
-```text
-Using only cited graph evidence: what is the current state of <PROJECT/TICKET/THEME>?
-If evidence is thin, list exact sources to crawl or files to add — do not invent.
-```
-
-```text
-Give me a Monday action list grounded in evidence we actually have.
+Monday action list grounded in evidence we actually have.
 Each bullet: action + why + cite. No filler.
 ```
 
-```text
-Day brief for offline handoff: what we installed, what the brain knows, hard risks, next actions.
-Write the file path when done.
-```
+### Session controls (as needed)
 
-### Block 7 — Control surface (as needed)
+| You say | What happens |
+|---------|----------------|
+| `stop beast mode` | RAG off this chat only |
+| `beast mode` | RAG on again this chat |
+| `show GodsEye` | Live graph HUD (if pygame available) |
+| `show golden config` | Shared map (when golden exists) |
+| `fire drill` | Health check any day |
 
-```text
-stop beast mode
-```
-→ plain Codex this chat only.
+### Day 1 done when
 
-```text
-beast mode
-```
-→ RAG back on this chat.
+- [ ] START installed without hard fail  
+- [ ] Prompts **1–6** done (or honest gaps)  
+- [ ] At least **one useful cited answer** or a clear gap list  
+- [ ] You know reopen Codex = beast on again  
 
-```text
-show golden config
-```
-→ machine map (after golden exists).
-
-```text
-add co-worker
-```
-→ how to emit/join `golden_join.json` (no secrets).
+**Not done:** agent counts, token burn, pretty graph with no proof.
 
 ---
 

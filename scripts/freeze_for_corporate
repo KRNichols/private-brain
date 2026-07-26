@@ -325,6 +325,9 @@ _pb_copy_tree "$PKG" "$dest/tools/engine" --exclude __pycache__ --exclude "*.pyc
   mkdir -p "$INS"
   cp -f "$TOOLS_SRC/install/README.md" "$INS/README.md" 2>/dev/null || true
   [[ -f "$SHARED/golden_join.example.json" ]] && cp -f "$SHARED/golden_join.example.json" "$INS/golden_join.example.json"
+  # Day-1 prompts (idiot-simple) next to START
+  if [[ -f "$ROOT/DAY1_PROMPTS.md" ]]; then cp -f "$ROOT/DAY1_PROMPTS.md" "$INS/DAY1_PROMPTS.md"; fi
+  if [[ -f "$SHARED/ROOT_README.md" ]]; then :; fi
   cp -f "$ROOT/corporate-package-index.env.example" "$INS/corporate-package-index.env.example" 2>/dev/null || true
   cat > "$INS/ROUTES.txt" <<'EOF'
 Package routes (START → day1). Same Mac/Windows.
