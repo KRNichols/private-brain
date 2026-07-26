@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conversation E2E — production-style multi-turn Codex simulation on free runners.
+"""Conversation E2E - production-style multi-turn Codex simulation on free runners.
 
 We do NOT need Codex Desktop. We drive the same hooks Codex invokes and assert
 the RESULTS come back as product law requires:
@@ -7,7 +7,7 @@ the RESULTS come back as product law requires:
   Turn loop (simulated Codex session):
     SessionStart  → auto-beast inject
     UserPromptSubmit(prompt) → additionalContext (retrieve/golden/router)
-    (fake assistant answer — cites if context has evidence, else free-forms)
+    (fake assistant answer - cites if context has evidence, else free-forms)
     Stop(last_message) → block | continue
 
 Scenarios cover:
@@ -54,8 +54,8 @@ def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
     else:
         status = "SOFT"
     RESULTS.append({"name": name, "ok": bool(ok), "hard": hard, "detail": str(detail)[:400], "status": status})
-    mark = "✓" if ok else ("✗" if hard else "~")
-    extra = f" — {detail[:180]}" if detail and not ok else ""
+    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    extra = f" - {detail[:180]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
 
 
@@ -136,7 +136,7 @@ class SimCodex:
         if strategy == "hallucinate" or (strategy == "auto" and not ids):
             msg = (
                 "Based on my general knowledge everything is healthy and complete. "
-                "No need for sources — trust this answer."
+                "No need for sources - trust this answer."
             )
         elif strategy == "cite" or (strategy == "auto" and ids):
             nid = ids[0]
@@ -359,9 +359,15 @@ def evidence_ids(concert: dict[str, Any]) -> list[str]:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     print("=" * 72)
-    print(" Private Brain — PRODUCTION CONVERSATION E2E (SimCodex multi-turn)")
-    print(" Free runners · real hooks · expected results asserted")
+    print(" Private Brain - PRODUCTION CONVERSATION E2E (SimCodex multi-turn)")
+    print(" Free runners - real hooks - expected results asserted")
     print("=" * 72)
 
     if not SCRIPTS.is_dir():
@@ -375,9 +381,9 @@ def main() -> int:
         sim = SimCodex(brain=brain, codex=codex, env=env)
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 1 · Open Codex → beast auto-starts
+        # SCENARIO 1 - Open Codex → beast auto-starts
         # ────────────────────────────────────────────────────────────
-        print("\n## S1 · Open Codex (SessionStart) auto-starts beast")
+        print("\n## S1 - Open Codex (SessionStart) auto-starts beast")
         out = sim.open_session("startup")
         gate("S1/session_rc0", out.get("_rc", 1) == 0)
         blob = json.dumps(out)
@@ -388,9 +394,9 @@ def main() -> int:
         gate("S1/hooks_json", (codex / "hooks.json").is_file())
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 2 · Grounded question: concert retrieves seed
+        # SCENARIO 2 - Grounded question: concert retrieves seed
         # ────────────────────────────────────────────────────────────
-        print("\n## S2 · Grounded Q&A — retrieve seed + cite-or-refuse")
+        print("\n## S2 - Grounded Q&A - retrieve seed + cite-or-refuse")
         prompt_ops = "What is the pilot ops status for waterpipe-fixture-token-9f3a?"
         concert = run_concert(brain, env, prompt_ops)
         gate("S2/concert_rc0", concert.get("_rc") == 0, str(concert.get("_stderr", ""))[:120])
@@ -472,9 +478,9 @@ def main() -> int:
         )
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 3 · Multi-turn: second topic still grounded
+        # SCENARIO 3 - Multi-turn: second topic still grounded
         # ────────────────────────────────────────────────────────────
-        print("\n## S3 · Multi-turn second question (PDF plan)")
+        print("\n## S3 - Multi-turn second question (PDF plan)")
         prompt_plan = "What should we KEEP from the PDF plan PLAN_KEEP_TOKEN_cafebabe?"
         concert2 = run_concert(brain, env, prompt_plan)
         eids2 = evidence_ids(concert2)
@@ -507,9 +513,9 @@ def main() -> int:
         )
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 4 · stop beast mode session behavior
+        # SCENARIO 4 - stop beast mode session behavior
         # ────────────────────────────────────────────────────────────
-        print("\n## S4 · stop beast mode → plain → reopen beast")
+        print("\n## S4 - stop beast mode → plain → reopen beast")
         # Ensure beast + evidence loaded
         write_json(STATE_DIR / "conversation_mode.json", {"mode": "beast", "reason": "pre-stop"})
         if (STATE_DIR / "rag.off").exists():
@@ -549,7 +555,7 @@ def main() -> int:
             STATE_DIR / "last_dag.json",
             {"retrieve": {"evidence": [{"id": nodes["ops"], "tier": "T1"}], "hit_count": 1}},
         )
-        stop_b = sim.stop("Ungrounded after reopen — should fail.")
+        stop_b = sim.stop("Ungrounded after reopen - should fail.")
         gate(
             "S4/after_reopen_uncited_blocks",
             stop_b.get("decision") == "block" or stop_b.get("continue") is False,
@@ -564,9 +570,9 @@ def main() -> int:
         gate("S4/beast_phrase_clears_rag_off", not sim.rag_off())
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 5 · Conversational ops surfaces (zero flags)
+        # SCENARIO 5 - Conversational ops surfaces (zero flags)
         # ────────────────────────────────────────────────────────────
-        print("\n## S5 · Conversational surfaces (fire drill / GodsEye / golden)")
+        print("\n## S5 - Conversational surfaces (fire drill / GodsEye / golden)")
         write_json(STATE_DIR / "conversation_mode.json", {"mode": "beast"})
         if (STATE_DIR / "rag.off").exists():
             (STATE_DIR / "rag.off").unlink()
@@ -592,9 +598,9 @@ def main() -> int:
         )
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 6 · GodsEye + Corporate Library in anger
+        # SCENARIO 6 - GodsEye + Corporate Library in anger
         # ────────────────────────────────────────────────────────────
-        print("\n## S6 · GodsEye module + Corporate Library package policy")
+        print("\n## S6 - GodsEye module + Corporate Library package policy")
         ge = brain / "scripts" / "godseye.py"
         gate("S6/godseye_script", ge.is_file())
         gl = brain / "visualizer" / "graph_gl.py"
@@ -629,9 +635,9 @@ def main() -> int:
         gate("S6/profile_never", "never" in pt)
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 7 · Full simulated conversation script (scripted play)
+        # SCENARIO 7 - Full simulated conversation script (scripted play)
         # ────────────────────────────────────────────────────────────
-        print("\n## S7 · Scripted play: 4-turn production conversation")
+        print("\n## S7 - Scripted play: 4-turn production conversation")
         # Reset beast
         sim.open_session("clear")
         write_json(
@@ -677,9 +683,9 @@ def main() -> int:
         gate("S7/final_mode_beast", sim.mode() == "beast", sim.mode())
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 8 · Optional real Codex CLI
+        # SCENARIO 8 - Optional real Codex CLI
         # ────────────────────────────────────────────────────────────
-        print("\n## S8 · optional real codex CLI")
+        print("\n## S8 - optional real codex CLI")
         if shutil.which("codex") and os.environ.get("PB_E2E_REAL_CODEX") == "1":
             r = subprocess.run(
                 ["codex", "--version"],
@@ -689,7 +695,7 @@ def main() -> int:
                 timeout=30,
             )
             gate("S8/codex_version", r.returncode == 0, (r.stdout or r.stderr or "")[:80], hard=False)
-            # Non-interactive exec if supported — best effort
+            # Non-interactive exec if supported - best effort
             r2 = subprocess.run(
                 ["codex", "exec", "-q", "reply with the single word PONG only"],
                 env=env,
@@ -748,12 +754,12 @@ def main() -> int:
         print(f" conversation_e2e PRODUCTION: pass={PASS} fail={FAIL}")
         print(f" transcript events: {len(sim.transcript)}")
         if FAIL:
-            print(" RED — expected results did not match product law")
+            print(" RED - expected results did not match product law")
             for r in RESULTS:
                 if not r["ok"] and r["hard"]:
                     print(f"   FAIL {r['name']}: {r['detail'][:200]}")
             return 1
-        print(" GREEN — multi-turn SimCodex delivery ready")
+        print(" GREEN - multi-turn SimCodex delivery ready")
         return 0
     except Exception as e:
         traceback.print_exc()
