@@ -613,16 +613,17 @@ def main() -> int:
             gate("N8/route_fire_drill_matched", False, str(e))
 
         # ══════════════════════════════════════════════════════════
-        # N9 - Organism / day1 / autopilot / fire_drill / nuclear soft
+        # N9 - Organism / day1 / fire_drill / capabilities (all hard)
         # ══════════════════════════════════════════════════════════
         print("\n## N9 - Organism - day1 - fire_drill - capabilities")
         org = brain / "scripts" / "organism.py"
         r = _py(env, str(org), "--no-godseye", timeout=120, cwd=brain)
-        # organism may return 1 if not ALIVE - soft if scripts ran
+        # organism exit 0 or 1 with ORGANISM/ALIVE output = ran the product surface
+        out_u = ((r.stdout or "") + (r.stderr or "")).upper()
         gate(
             "N9/organism_runs",
-            r.returncode in (0, 1) and ("ORGANISM" in (r.stdout or "").upper() or "ALIVE" in (r.stdout or "").upper() or r.returncode == 0),
-            f"rc={r.returncode} {(r.stderr or '')[:80]}",
+            r.returncode in (0, 1) and ("ORGANISM" in out_u or "ALIVE" in out_u or "WATER" in out_u),
+            f"rc={r.returncode} {(r.stderr or r.stdout or '')[:120]}",
         )
 
         day1 = brain / "scripts" / "day1_first_start.py"
@@ -631,7 +632,12 @@ def main() -> int:
 
         fd = brain / "scripts" / "fire_drill.py"
         r = _py(env, str(fd), timeout=300, cwd=brain)
-        gate("N9/fire_drill_runs", r.returncode in (0, 1), f"rc={r.returncode}")
+        # ZERO SOFT: fire_drill must exit 0 (band ZERO_FAIL_GREEN)
+        gate(
+            "N9/fire_drill_runs",
+            r.returncode == 0,
+            f"rc={r.returncode} {(r.stderr or r.stdout or '')[-200:]}",
+        )
 
         try:
             from capabilities import self_repair  # type: ignore

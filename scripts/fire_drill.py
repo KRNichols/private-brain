@@ -28,12 +28,17 @@ sys.path.insert(0, str(_ROOT))
 os.environ.setdefault("PRIVATE_BRAIN_HOME", str(_ROOT))
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
+# Doctor sub-checks that are NOT product law for empty CI brains.
+# Everything else in doctor is hard. (Zero soft on fire_drill gates themselves.)
 SOFT_DOCTOR = {
     "corpus_public_ratio",  # raw host mix may stay high after OSS load-test
     "optional_capabilities",
     "corporate_library_approved_source",
-    "sessions_restored",  # soft in doctor; hard in mission phase
+    "sessions_restored",  # hardened by mission_monday / day1
     "pilot_ready_strict",
+    # pilot corpus needs real internal ingest — exercised by force-feed + day1 suites
+    "corpus_pilot_ops",
+    "corpus_pilot_ready",
 }
 
 # Flags that must exist on BOTH bash beastMode and Windows beastMode.cmd
