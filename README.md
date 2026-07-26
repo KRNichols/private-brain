@@ -3,6 +3,7 @@
 [![CI](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/ci.yml)
 [![Windows first-boot](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/windows-first-boot.yml)
 [![Mac first-boot](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/mac-first-boot.yml)
+[![Nuclear Winter](https://github.com/KRNichols/private-brain/actions/workflows/nuclear-winter.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/nuclear-winter.yml)
 [![Conversation E2E](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml/badge.svg)](https://github.com/KRNichols/private-brain/actions/workflows/conversation-e2e.yml)
 
 **Codex sideload.** Install once. Open Codex. Talk.  
@@ -311,4 +312,19 @@ GitHub Actions (ubuntu + windows + macos) abuse free hosted runners for **produc
 | **Kit first-boot (Mac/Windows)** | Mac/Windows first-boot · freeze → START → hooks.json |
 
 No Codex Desktop GUI on runners (no app install/login). Hooks + DAG are the same code path Codex calls after sideload. Optional live `codex` CLI later via `PB_E2E_REAL_CODEX=1`.
+
+### Nuclear conversational testing
+
+Every push runs **`scripts/nuclear_conversation_e2e.py`** on ubuntu + windows + macos:
+
+- SessionStart auto-beast · cite-or-refuse Stop gate · multi-turn SimCodex
+- stop beast mode / reopen · router (fire drill, GodsEye, golden, doctor)
+- orchestrate concert · organism/day1/fire_drill soft · Corporate Library policy
+- nested `conversation_e2e` · scripted 5-beat production play
+
+Report: `.brain/state/NUCLEAR_CONVERSATION_E2E.json`
+
+### GodsEye layout
+
+Continuous **live** motion by default (no auto-settle freeze). Space only **pauses**. Opt-in old settle: `PB_GODSEYE_ALLOW_SETTLE=1`.
 

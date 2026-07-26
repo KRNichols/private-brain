@@ -128,5 +128,7 @@ jobs:
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/nuclear_conversation_e2e.py
           python scripts/conversation_e2e.py
+
 

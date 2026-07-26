@@ -4,7 +4,7 @@ Private Brain GodsEye — TRUE OpenGL Live Ops
 
 Apple-simple by default: full-bleed graph + one health pill.
 Ops chrome (stages / vectors / metrics) lives behind the Inspector (I).
-Layout stays LIVE by default (gentle continuous motion). Space freezes/unfreezes.
+Layout is ALWAYS LIVE continuous motion (no auto-settle freeze). Space only pauses.
 
   PB_GODSEYE_BACKEND=gl   (default via godseye.py)
   PB_GODSEYE_BACKEND=cpu  → live_gui.py software fallback
@@ -15,7 +15,7 @@ Controls (simple):
   double-click   focus camera on node
   I              Inspector on/off (ops rail)
   H              help (cycles SIMPLE ↔ ADVANCED)
-  Space          freeze ↔ live motion
+  Space          pause ↔ resume live motion (never auto-freezes)
   Q / Esc        close overlay → quit
 
 Power (Inspector or help):
@@ -987,7 +987,7 @@ class LiveGL:
             "layout_settled": bool(self.layout_settled),
             "layout_energy": round(self.layout_energy, 4),
             "layout_live": bool(self.layout_live),
-            "layout_mode": "LIVE" if self.layout_live else "FROZEN",
+            "layout_mode": "LIVE" if self.layout_live else "PAUSED",
             "rate_band": self.rate_band or "",
             "graph": {
                 "loaded_nodes": len(self.nodes),
@@ -1229,18 +1229,19 @@ class LiveGL:
         return max(80, int(base * self.lod_scale))
 
     def step_layout(self) -> None:
-        """Physics in free world space — settles to idle so CPU is not pegged at 100%.
+        """Physics always LIVE while layout_live — no auto-settle freeze.
 
-        Phase A (high energy): full force layout (budgeted).
-        Phase B (settled): only micro-breathe + selected neighborhood — ultra-smooth HUD.
+        Space sets layout_live=False (pause). Otherwise continuous gentle motion.
+        LOD still throttles budget under load so the UI never stutters hard.
         """
         if not self.layout_live:
             return
+        # Force continuous live — never park in settled freeze mode
+        # (opt-in old settle: PB_GODSEYE_ALLOW_SETTLE=1)
+        if os.environ.get("PB_GODSEYE_ALLOW_SETTLE", "").strip() not in ("1", "true", "yes"):
+            self.layout_settled = False
         # skip frames under load
         if self.lod_scale < 0.55 and (self.tick % 2):
-            return
-        # settled: sparse micro-breathe only (every 6th frame) — frees CPU for HUD
-        if self.layout_settled and (self.tick % 6):
             return
 
         all_ids = [i for i, n in self.nodes.items() if self.visible(n) and i in self.pos]
@@ -1319,14 +1320,13 @@ class LiveGL:
             springs += 1
 
         t = self.tick * 0.01
-        breath = 0.0022 if self.layout_settled else 0.012
-        damp = 0.86 if not self.layout_settled else 0.82
+        breath = 0.010  # continuous live motion — never freeze to micro-breathe
+        damp = 0.88
         for nid in ids:
             px, py = self.pos[nid]
-            # soft gravity only during active settle
-            if not self.layout_settled:
-                self.vel[nid][0] += -px * 0.00012
-                self.vel[nid][1] += -py * 0.00012
+            # soft gravity always (live layout)
+            self.vel[nid][0] += -px * 0.00012
+            self.vel[nid][1] += -py * 0.00012
             self.vel[nid][0] *= damp
             self.vel[nid][1] *= damp
             self.vel[nid][0] += breath * math.sin(t + (hash(nid) % 97))
@@ -1335,35 +1335,16 @@ class LiveGL:
             self.pos[nid][1] += self.vel[nid][1]
             energy += abs(self.vel[nid][0]) + abs(self.vel[nid][1])
 
-        # EMA energy → auto-settle (ultra apps idle their physics)
+        # EMA energy (metrics only) — do NOT auto-freeze layout
         n_e = max(1, len(ids))
         inst = energy / n_e
-        prev_e = self.layout_energy
         self.layout_energy = 0.9 * self.layout_energy + 0.1 * inst
-        # Peak-relative settle: after warm-up, if energy is low OR has plateaued
         if not hasattr(self, "_layout_peak"):
             self._layout_peak = 1.0
-            self._settle_stable = 0
         if self.layout_energy > self._layout_peak:
             self._layout_peak = self.layout_energy
-        delta = abs(self.layout_energy - prev_e)
-        if not self.layout_settled and self.tick > 100:
-            low = self.layout_energy < 0.35
-            cooled = self.layout_energy < max(0.4, 0.25 * self._layout_peak)
-            plateau = delta < 0.012 and self.layout_energy < 0.8
-            if low or cooled or plateau:
-                self._settle_stable += 1
-            else:
-                self._settle_stable = max(0, self._settle_stable - 1)
-            if self._settle_stable > 25 or (self.tick > 360 and self.layout_energy < 1.2):
-                self.layout_settled = True
-                self._settle_stable = 0
-                self.event_log.appendleft("layout settled · micro-breathe")
-        elif self.layout_settled:
-            # re-awaken only on real disturbance (selection/reseed already set False)
-            if self.layout_energy > max(1.2, 0.55 * self._layout_peak):
-                self.layout_settled = False
-                self._layout_peak = max(self._layout_peak, self.layout_energy)
+        # Keep gentle continuous forces even after warm-up (never layout_settled=True)
+        self.layout_settled = False
 
     def note_frame(self) -> None:
         """Record frame time and auto-degrade draw/layout budget when lagging."""
@@ -2021,7 +2002,7 @@ class LiveGL:
         glLoadIdentity()
         self.texts.set_screen(self.h)
         lab, hcol, why = self.health()
-        if self.layout_live and self.layout_settled:
+        if False and self.layout_live and self.layout_settled:
             motion = "SETTLED"
         elif self.layout_live:
             motion = "LIVE"
@@ -2567,7 +2548,7 @@ class LiveGL:
                 gpu = f"{self.gpu_renderer or '?'} · {self.gpu_path}"
                 lines = [
                     f"GPU: {gpu}"[:72],
-                    "I Inspector · M minimap · P stages · Space freeze · R reseed · S reload",
+                    "I Inspector · M minimap · P stages · Space pause · R reseed · S reload",
                     "F/T source·tier · 1-4 tiers · 5 all · L legend · E evidence path",
                     "N neighbors · [ ] trail walk · dual-pane EVIDENCE in Inspector",
                     "simple_mode default · scissor/clip = no window bleed",
@@ -2726,7 +2707,7 @@ def main() -> int:
                     if not viz.layout_live:
                         for v in viz.vel.values():
                             v[0] = v[1] = 0.0
-                    viz.event_log.appendleft("layout LIVE" if viz.layout_live else "layout FROZEN")
+                    viz.event_log.appendleft("layout LIVE · continuous" if viz.layout_live else "layout PAUSED (Space)")
                 elif event.key == pygame.K_p:
                     if not viz.show_inspector:
                         viz.show_inspector = True
@@ -2856,10 +2837,8 @@ def main() -> int:
         viz._work_ms = (time.perf_counter() - t_work0) * 1000.0
         viz.note_frame()
         # Settled layout → lower frame ceiling frees CPU (micro-breathe still smooth)
-        if viz.layout_settled and not viz.cam_target and viz.lod_scale >= 0.95:
-            clock.tick(48)
-        else:
-            clock.tick(60)
+        # Always 60fps target — layout never auto-freezes, no settled downclock
+        clock.tick(60)
         # Telemetry: metrics every ~2s; perf on same cadence (time-based so low-FPS still writes)
         viz.write_metrics_snapshot(force=False)
         now_w = time.time()

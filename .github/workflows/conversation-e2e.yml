@@ -1,6 +1,6 @@
-# Free GitHub-hosted runners: product conversation contracts (no Codex GUI required).
-# Proves cite-or-block, Stop hook, orchestrate concert, hooks install — Mac ≡ Windows ≡ Linux.
-name: Conversation E2E
+# NUCLEAR conversational E2E on free GitHub-hosted runners (ubuntu + windows + macos).
+# Smoke-tests every production surface free runners can hit — ready-to-go proof.
+name: Nuclear Conversation E2E
 
 on:
   push:
@@ -11,20 +11,23 @@ on:
       - "package/scripts/**"
       - "private_brain/**"
       - "config/**"
+      - "installers/**"
+      - "visualizer/**"
       - ".github/workflows/conversation-e2e.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main, master]
   workflow_dispatch:
 
 concurrency:
-  group: convo-e2e-${{ github.ref }}
+  group: nuclear-convo-e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  conversation-contracts:
-    name: convo (${{ matrix.os }})
+  nuclear-conversation:
+    name: nuclear-convo (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +39,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Conversation E2E (cite-or-block + hooks + concert)
+      - name: Nuclear Conversation E2E (full system smoke)
         shell: bash
         env:
           PB_ENTERPRISE: "1"
@@ -44,26 +47,29 @@ jobs:
           PB_NONINTERACTIVE: "1"
           PB_NO_OPEN_CODEX: "1"
           PB_GODSEYE: "0"
-          # Real Codex CLI is optional; free runners usually have no binary/auth.
-          # Set repo secret + PB_E2E_REAL_CODEX=1 later if you want a live turn.
+          PB_NUCLEAR_HEADLESS: "1"
+          PYGAME_HIDE_SUPPORT_PROMPT: "1"
           PB_E2E_REAL_CODEX: "0"
-          # Windows runners default to cp1252; force UTF-8 for prints + subprocess
-          PYTHONIOENCODING: "utf-8"
-          PYTHONUTF8: "1"
         run: |
           set -e
           python -m pip install -U pip >/dev/null
-          # stdlib-only core - no pygame required for conversation contracts
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
-          python scripts/conversation_e2e.py
+          # Primary: nuclear conversational suite (every surface)
+          python scripts/nuclear_conversation_e2e.py
+          # Secondary: deeper multi-turn SimCodex (if separate script still present)
+          if [ -f scripts/conversation_e2e.py ]; then
+            python scripts/conversation_e2e.py
+          fi
 
-      - name: Upload conversation report
+      - name: Upload nuclear conversation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: conversation-e2e-${{ matrix.os }}-${{ github.sha }}
+          name: nuclear-convo-e2e-${{ matrix.os }}-${{ github.sha }}
           path: |
+            .brain/state/NUCLEAR_CONVERSATION_E2E.json
             .brain/state/CONVERSATION_E2E.json
+            **/NUCLEAR_CONVERSATION_E2E.json
             **/CONVERSATION_E2E.json
           if-no-files-found: warn
