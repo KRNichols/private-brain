@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """Fail CI if residual customer-specific branding leaks into the public tree.
 
-Banned tokens (word boundary):
+Banned stems (case-insensitive, word boundary):
   Boeing / BOEING / boeing
-  SRES
-  BSF
+  SRES / sres
+  BSF / bsf
   Artifactory / artifactory  (legacy package product name)
 
 Allowed replacements (for humans, not enforced here):
   Corporate · Corporate Library · Protected Gateway · Corporate Package Index
 
 Scanner self-exceptions:
-  - this file
-  - workflow lines that build needles via string concat
-  - explicit allowlist file paths (none by default)
+  - this file only (by basename)
+  - workflow/script lines that build needles via string concat
 """
 from __future__ import annotations
 
@@ -23,18 +22,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Built without writing full banned words as a single contiguous literal in
-# some consumers — but THIS file must name them to lint them out.
-BANNED = [
-    "Boeing",
-    "BOEING",
+# Stems only — matched case-insensitively with \\b so mixed-case reintroductions fail.
+# This file must name them to ban them; ALLOW_FILES excludes self.
+BANNED_STEMS = (
     "boeing",
-    "SRES",
-    "BSF",
-    "Artifactory",
+    "sres",
+    "bsf",
     "artifactory",
-    "ARTIFACTORY",
-]
+)
 
 TEXT_SUFFIX = {
     ".py",
@@ -66,7 +61,7 @@ SKIP_DIRS = {
     "node_modules",
     "images",
 }
-# Files that may mention banned words only as the thing being banned
+# Only this scanner may mention banned stems (as the thing being banned).
 ALLOW_FILES = {
     "lint_sanitized_branding.py",
 }
@@ -105,10 +100,13 @@ def main() -> int:
         for i, line in enumerate(text.splitlines(), 1):
             if is_concat_scanner_line(line):
                 continue
-            # allow comments that say "do not use X" listing banned terms? No — ban hard.
-            for token in BANNED:
-                if re.search(r"\b" + re.escape(token) + r"\b", line):
-                    hits.append(f"{rel}:{i}: banned `{token}` :: {line.strip()[:140]}")
+            # Hard ban — no "do not use X" comments with residual tokens either.
+            for stem in BANNED_STEMS:
+                m = re.search(r"\b" + re.escape(stem) + r"\b", line, flags=re.IGNORECASE)
+                if m:
+                    hits.append(
+                        f"{rel}:{i}: banned `{m.group(0)}` :: {line.strip()[:140]}"
+                    )
                     break
 
     if hits:
@@ -122,7 +120,10 @@ def main() -> int:
         print(f"Total hits: {len(hits)}")
         return 1
 
-    print("SANITIZE LINT OK — no Boeing / SRES / BSF / Artifactory in public tree")
+    print(
+        "SANITIZE LINT OK — no residual customer branding stems in public tree "
+        "(Corporate / Corporate Library / Protected Gateway / Corporate Package Index only)"
+    )
     return 0
 
 
