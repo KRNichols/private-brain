@@ -129,6 +129,7 @@ jobs:
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
           python scripts/rag_dag_e2e.py
+          python scripts/nuclear_day1_kingdom_e2e.py
           python scripts/nuclear_conversation_e2e.py
           python scripts/conversation_e2e.py
 

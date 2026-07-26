@@ -52,6 +52,16 @@ Check the box after each prompt returns something useful (or a clear refuse/gap)
 
 ### Always (do these first)
 
+- [ ] **0 · Auto-discover kingdom (run first after install)**
+```text
+Map my environment now. Ingest all Codex sessions under .codex.
+Find Corporate Library package index and Protected Gateway.
+Find Corporate GitLab roots and crawl recursively if token is available.
+Find local Neo4j; profile intelligently — do NOT bulk ingest dirty data.
+Report what you found, what you ingested, and what is still missing (no secrets).
+```
+
+
 - [ ] **1 · Wake up**
 ```text
 Private Brain is sideloaded. Confirm hooks are live and beast is on.

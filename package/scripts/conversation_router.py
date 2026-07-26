@@ -148,7 +148,35 @@ def route(prompt: str) -> dict[str, Any] | None:
     if any(x in low for x in ("wake organism", "full wake", "water pipe", "spin up everything")):
         return pack("ORGANISM · full water pipe", _run("organism.py", ["--quiet"], timeout=600))
 
-    if any(x in low for x in ("ingest sessions", "harvest sessions", "load my sessions")):
+    
+    if any(
+        x in low
+        for x in (
+            "day 1 discover",
+            "day1 discover",
+            "auto discover",
+            "find corporate library",
+            "find protected gateway",
+            "find gitlab",
+            "crawl gitlab",
+            "find neo4j",
+            "ingest kingdom",
+            "discover everything",
+            "map my environment",
+        )
+    ):
+        return pack(
+            "DAY1 · auto discover (sessions · library · gateway · gitlab · neo4j)",
+            _run(
+                "day1_auto_discover.py",
+                ["--json"]
+                + (["--neo4j-ingest-keep"] if "ingest neo" in low or "neo4j keep" in low else [])
+                + (["--no-gitlab-crawl"] if "discover only" in low else []),
+                timeout=900,
+            ),
+        )
+
+if any(x in low for x in ("ingest sessions", "harvest sessions", "load my sessions")):
         cmd = [
             _py(),
             "-c",

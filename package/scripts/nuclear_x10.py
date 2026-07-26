@@ -360,7 +360,7 @@ def main() -> int:
         "brutal_suite.py","capabilities.py","config_of_config.py","conversation_router.py",
         "day1_first_start.py","enterprise.py","fire_drill.py","freeze_for_corporate","godseye.py",
         "golden_config.py","heal_ledger.py","ingest_url.py","install_hooks.py","mission_monday.py",
-        "nuclear_zero_fail.py","nuclear_x10.py","ops_metrics.py","organism.py","orchestrate.py","conversation_e2e.py","nuclear_conversation_e2e.py","conversation_e2e.py",
+        "nuclear_zero_fail.py","nuclear_x10.py","ops_metrics.py","organism.py","orchestrate.py","conversation_e2e.py","nuclear_conversation_e2e.py","day1_auto_discover.py","nuclear_day1_kingdom_e2e.py","rag_dag_e2e.py","conversation_e2e.py",
         "phase2_handoff.py","secrets_store.py","smart_discover.py","vector_manager.py",
         "validate_enterprise.py","beastMode","beastMode.cmd",
     ]
@@ -409,6 +409,8 @@ def main() -> int:
 
     # dual OS ROOT readme mentions open Codex
     gate("I_root_readme_open_codex", "Open Codex" in src("installers/shared/ROOT_README.md") or "open Codex" in src("installers/shared/ROOT_README.md"))
+    gate("I_day1_auto_discover", (_SCRIPTS / "day1_auto_discover.py").is_file())
+    gate("I_nuclear_day1_kingdom", (_SCRIPTS / "nuclear_day1_kingdom_e2e.py").is_file())
     gate("I_nuclear_conversation_e2e", (_SCRIPTS / "nuclear_conversation_e2e.py").is_file())
     gate("I_conversation_e2e_script", (_SCRIPTS / "conversation_e2e.py").is_file())
     gate("I_conversation_e2e_workflow", (_ROOT / ".github" / "workflows" / "conversation-e2e.yml").is_file())

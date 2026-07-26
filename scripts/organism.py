@@ -249,6 +249,44 @@ def phase_local_heal(report: dict[str, Any], quiet: bool) -> None:
         _log(f"heal: {e}", quiet)
 
 
+
+def phase_day1_auto_discover(report: dict[str, Any], quiet: bool) -> None:
+    """Corporate surfaces: library, gateway, gitlab roots, neo4j + sessions already done."""
+    _log("PHASE 0b · day1 auto-discover (library · gateway · gitlab · neo4j)", quiet)
+    try:
+        from day1_auto_discover import run as day1_auto
+
+        # sessions already ingested in phase_sessions — skip re-force unless env
+        out = day1_auto(
+            sessions=os.environ.get("PB_DAY1_RESESSIONS") in ("1", "true", "yes"),
+            library=True,
+            gateway=True,
+            gitlab=True,
+            neo4j=True,
+            gitlab_crawl=os.environ.get("PB_GITLAB_CRAWL", "1") not in ("0", "false", "no"),
+            neo4j_ingest_keep=os.environ.get("PB_NEO4J_INGEST_KEEP") in ("1", "true", "yes"),
+            quiet=quiet,
+            force_sessions=False,
+        )
+        report["day1_auto_discover"] = {
+            "ok": True,
+            "compact": {
+                k: (out.get("phases") or {}).get(k)
+                for k in (
+                    "corporate_library",
+                    "protected_gateway",
+                    "gitlab_discover",
+                    "gitlab_crawl",
+                    "neo4j",
+                )
+            },
+        }
+        _log("day1 auto-discover: complete (see day1_auto_discover.json)", quiet)
+    except Exception as e:
+        report["day1_auto_discover"] = {"ok": False, "error": str(e)[:240]}
+        _log(f"day1 auto-discover: soft-fail {e}", quiet)
+
+
 def phase_crawl(report: dict[str, Any], quiet: bool) -> None:
     """Polite crawl — shallow first, rate-limited. No stampede."""
     urls = []
@@ -551,6 +589,8 @@ def run(
         print(f" max_agents={report['max_agents']}  region_default=gov-region-1")
 
     phase_sessions(report, quiet, force=force_sessions)
+    if not sessions_only:
+        phase_day1_auto_discover(report, quiet)
     if sessions_only:
         phase_alive(report, quiet)
         report["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
