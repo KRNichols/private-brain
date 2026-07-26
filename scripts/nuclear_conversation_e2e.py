@@ -198,6 +198,7 @@ def main() -> int:
             "conversation_e2e.py",
             "nuclear_conversation_e2e.py",
             "codex_cli_smoke.py",
+            "rag_issue_golden_e2e.py",
             "nuclear_x10.py",
             "fire_drill.py",
             "day1_first_start.py",

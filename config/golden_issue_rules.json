@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "description": "Rules for RAG Issue Golden E2E — researched public forges only. No customer secrets.",
+  "principle": "Feed real repos → pick a real issue → ground-truth from issue body/title → RAG-DAG answer must cite and overlap ground truth. Soft-skip banned.",
+  "repos": {
+    "github_primary": {
+      "repo": "cli/cli",
+      "why": "Large issue corpus, stable API, GitHub Actions token works on free runners",
+      "ingest": { "deep": true, "max_issues": 25, "max_prs": 8 }
+    },
+    "github_secondary": {
+      "repo": "actions/checkout",
+      "why": "Second forge surface; release/changelog style issues with long bodies",
+      "ingest": { "deep": true, "max_issues": 12, "max_prs": 4 }
+    },
+    "gitlab_primary": {
+      "instance": "https://gitlab.com",
+      "group": "gitlab-org",
+      "why": "Public group API without auth for light project/issue topology",
+      "ingest": { "max_projects": 4, "max_issues": 12 }
+    }
+  },
+  "issue_selection": {
+    "prefer": ["github:issue:", "gitlab:issue:"],
+    "min_body_chars": 80,
+    "min_title_chars": 12,
+    "exclude_title_substrings": ["spam", "suspected-spam"],
+    "score": "len(body) + 2*len(title); pick max"
+  },
+  "ground_truth": {
+    "fields": ["id", "title", "body", "uri"],
+    "solution_brief": "Issue title + body + node id + cite-only instruction",
+    "key_terms": "alphanumeric tokens len>=3 minus english stopwords, top 40"
+  },
+  "question_template": "Using only Private Brain graph evidence, what is the issue '{title}' about, and what should the solution approach be? Cite node ids with backticks.",
+  "scoring": {
+    "min_token_overlap": 0.28,
+    "title_token_hit_fallback": 0.4,
+    "inject_min_overlap": 0.12,
+    "must_cite_issue_id": true,
+    "uncited_invent_must_block": true
+  },
+  "surfaces": [
+    "github_ingest --deep",
+    "gitlab_ingest or crawl_public --gitlab",
+    "brain_lib.query",
+    "orchestrate concert",
+    "hooks session_start + user_prompt_submit + stop_validate",
+    "enterprise.citation_gate",
+    "optional codex exec when PB_E2E_CODEX_EXEC=1"
+  ],
+  "zero_soft": true
+}

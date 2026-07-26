@@ -345,43 +345,101 @@ jobs:
         env:
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
           PB_FORCE_FEED_TINY: "1"
-          # optional: secrets.GITHUB_TOKEN helps GitHub rate limits
+          PB_ZERO_SOFT: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
           python scripts/ci_force_feed_public.py
-      - name: Unleash beast if force-feed red
+      - name: Beast heal + hard re-run if force-feed red
         if: failure()
         shell: bash
         env:
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_ZERO_SOFT: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
           python - <<'PY'
           import os, sys
           sys.path.insert(0,"scripts")
           os.environ["PB_ENTERPRISE"]="1"
-          print("BEAST — heal + smaller force-feed retry")
+          os.environ["PB_ZERO_SOFT"]="1"
+          print("BEAST — heal + full force-feed re-run (zero soft: no skip env)")
           try:
             from enterprise import self_heal, ensure_enterprise_profile
             ensure_enterprise_profile(); print(self_heal())
           except Exception as e:
-            print("heal soft", e)
+            print("heal error", e); raise
           os.environ["PB_FORCE_FEED_TINY"]="1"
-          # skip slow sources on retry, keep jira+github
-          os.environ["PB_FORCE_FEED_SKIP_CONFLUENCE"]="1"
           import runpy
           sys.argv=["ci_force_feed_public.py"]
-          runpy.run_path("scripts/ci_force_feed_public.py", run_name="__main__")
+          # re-run must exit 0 or job stays red
+          try:
+            runpy.run_path("scripts/ci_force_feed_public.py", run_name="__main__")
+          except SystemExit as se:
+            if se.code not in (0, None):
+              raise SystemExit(se.code)
           PY
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: winter-force-feed-${{ matrix.os }}-${{ github.sha }}
-          path: .brain/state/CI_FORCE_FEED_PUBLIC.json
+          path: |
+            .brain/state/CI_FORCE_FEED_PUBLIC.json
+            e2e-reports/**
           if-no-files-found: warn
+          include-hidden-files: true
+
+  rag-issue-golden:
+    name: rag-issue-golden (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [py-compile]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Codex CLI
+        shell: bash
+        run: |
+          set -e
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+          npm install -g @openai/codex@latest || npm install -g @openai/codex
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          if [ -n "${APPDATA:-}" ] && [ -d "${APPDATA}/npm" ]; then echo "${APPDATA}/npm" >> "$GITHUB_PATH"; fi
+          command -v codex
+          codex --version
+      - name: Ultimate RAG issue golden E2E
+        shell: bash
+        env:
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_ZERO_SOFT: "1"
+          PB_GOLDEN_MIN_OVERLAP: "0.28"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/rag_issue_golden_e2e.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: winter-rag-golden-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            e2e-reports/**
+            .brain/state/RAG_ISSUE_GOLDEN_E2E.json
+          if-no-files-found: warn
+          include-hidden-files: true
 
   day1-kingdom:
     name: day1-kingdom (${{ matrix.os }})
@@ -496,7 +554,7 @@ jobs:
   nuclear-winter-green:
     name: NUCLEAR WINTER GREEN
     runs-on: ubuntu-latest
-    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, force-feed-public, coverage-judge, sanitize-and-law]
+    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, force-feed-public, rag-issue-golden, coverage-judge, sanitize-and-law]
     if: always()
     steps:
       - name: Require all upstream green
@@ -508,9 +566,10 @@ jobs:
           echo "rag=${{ needs.rag-dag.result }}"
           echo "kingdom=${{ needs.day1-kingdom.result }}"
           echo "feed=${{ needs.force-feed-public.result }}"
+          echo "golden=${{ needs.rag-issue-golden.result }}"
           echo "cov=${{ needs.coverage-judge.result }}"
           echo "law=${{ needs.sanitize-and-law.result }}"
-          # ZERO SOFT: every upstream including nuclear-x10 must be success
+          # ZERO SOFT: every upstream including ultimate RAG golden must be success
           for r in \
             "${{ needs.py-compile.result }}" \
             "${{ needs.nuclear-convo.result }}" \
@@ -518,6 +577,7 @@ jobs:
             "${{ needs.rag-dag.result }}" \
             "${{ needs.day1-kingdom.result }}" \
             "${{ needs.force-feed-public.result }}" \
+            "${{ needs.rag-issue-golden.result }}" \
             "${{ needs.coverage-judge.result }}" \
             "${{ needs.sanitize-and-law.result }}" \
             "${{ needs.freeze-and-boot.result }}"; do
@@ -526,4 +586,4 @@ jobs:
               exit 1
             fi
           done
-          echo "NUCLEAR WINTER GREEN — every suite hard-green (zero soft)"
+          echo "NUCLEAR WINTER GREEN — every suite hard-green (zero soft + ultimate RAG golden)"

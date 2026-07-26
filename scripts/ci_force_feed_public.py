@@ -166,39 +166,38 @@ def main() -> int:
         gate("github_feed", False, "PB_FORCE_FEED_SKIP_GITHUB set — skip banned under zero-soft")
         feeds["sources"]["github"] = {"skipped": True, "fail": True}
     else:
+        # --deep required: shallow exits before issues/PRs land (RAG needs issue nodes)
         r = _py_run(
             [
                 str(_SCRIPTS / "github_ingest.py"),
                 "--repo",
                 "cli/cli",
-                "--shallow",
-                "--max-repos",
-                "1",
+                "--deep",
                 "--max-issues",
-                str(max(5, gh_repos * 3)),
+                str(max(12, gh_repos * 5)),
                 "--max-prs",
-                "3",
+                "5",
                 "--max-files",
-                "4",
+                "6",
                 "--json",
             ],
-            timeout=600,
+            timeout=700,
         )
-        # fallback org tiny
+        # fallback second public repo
         if not r.get("ok"):
             r = _py_run(
                 [
                     str(_SCRIPTS / "github_ingest.py"),
-                    "--org",
-                    "octocat",
-                    "--shallow",
-                    "--max-repos",
-                    str(gh_repos),
+                    "--repo",
+                    "actions/checkout",
+                    "--deep",
                     "--max-issues",
-                    "5",
+                    "10",
+                    "--max-prs",
+                    "3",
                     "--json",
                 ],
-                timeout=400,
+                timeout=500,
             )
         feeds["sources"]["github"] = {"ok": r.get("ok"), "rc": r.get("rc"), "stderr_tail": (r.get("stderr") or "")[-400:]}
         nodes = load_all_nodes()
@@ -242,6 +241,30 @@ def main() -> int:
             len(j_nodes) > 0 or r.get("ok"),
             f"nodes={len(j_nodes)} rc={r.get('rc')}",
         )
+        # hard require nodes OR successful re-attempt via --all slice
+        if len(j_nodes) == 0:
+            r3 = _py_run(
+                [
+                    str(_SCRIPTS / "crawl_public.py"),
+                    "--all",
+                    "--max-projects",
+                    "2",
+                    "--max-issues",
+                    "8",
+                    "--max-spaces",
+                    "1",
+                    "--max-pages",
+                    "3",
+                ],
+                timeout=500,
+            )
+            nodes = load_all_nodes()
+            j_nodes = [
+                n
+                for n in nodes
+                if str(n.get("source") or "").lower() == "jira" or str(n.get("id") or "").startswith("jira:")
+            ]
+            feeds["sources"]["jira_retry"] = {"ok": r3.get("ok"), "rc": r3.get("rc"), "nodes": len(j_nodes)}
         gate("jira_has_graph", len(j_nodes) > 0, f"n={len(j_nodes)}")
 
     # ── 4. Confluence public (Apache cwiki) ──────────────────────
@@ -276,6 +299,29 @@ def main() -> int:
             len(c_nodes) > 0 or r.get("ok"),
             f"nodes={len(c_nodes)} rc={r.get('rc')}",
         )
+        if len(c_nodes) == 0:
+            # second path: broader crawl may still land spaces
+            r3 = _py_run(
+                [
+                    str(_SCRIPTS / "crawl_public.py"),
+                    "--confluence",
+                    "--confluence-base",
+                    "https://cwiki.apache.org/confluence",
+                    "--max-spaces",
+                    "3",
+                    "--max-pages",
+                    "8",
+                ],
+                timeout=500,
+            )
+            nodes = load_all_nodes()
+            c_nodes = [
+                n
+                for n in nodes
+                if str(n.get("source") or "").lower() == "confluence"
+                or str(n.get("id") or "").startswith("confluence:")
+            ]
+            feeds["sources"]["confluence_retry"] = {"ok": r3.get("ok"), "rc": r3.get("rc"), "nodes": len(c_nodes)}
         gate("confluence_has_graph", len(c_nodes) > 0, f"n={len(c_nodes)}")
 
     # ── 5. Graph must have grown; RAG retrieve works ─────────────
@@ -314,7 +360,7 @@ def main() -> int:
             "--no-crawl",
             "--json",
         ],
-        timeout=180,
+        timeout=240,
     )
     gate("concert_rc0", r.get("ok") or r.get("rc") == 0, (r.get("stderr") or "")[:160])
     concert: dict[str, Any] = {}
