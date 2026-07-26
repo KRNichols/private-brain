@@ -145,6 +145,7 @@ jobs:
         with:
           name: nuclear-convo-e2e-${{ matrix.os }}-${{ github.sha }}
           path: |
+            e2e-reports/**
             .brain/state/NUCLEAR_CONVERSATION_E2E.json
             .brain/state/CONVERSATION_E2E.json
             .brain/state/CODEX_CLI_SMOKE.json
@@ -152,3 +153,4 @@ jobs:
             **/CONVERSATION_E2E.json
             **/CODEX_CLI_SMOKE.json
           if-no-files-found: warn
+          include-hidden-files: true

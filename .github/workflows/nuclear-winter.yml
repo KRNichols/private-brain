@@ -150,10 +150,12 @@ jobs:
         with:
           name: winter-convo-${{ matrix.os }}-${{ github.sha }}
           path: |
+            e2e-reports/**
             .brain/state/NUCLEAR_CONVERSATION_E2E.json
             .brain/state/CONVERSATION_E2E.json
             .brain/state/CODEX_CLI_SMOKE.json
           if-no-files-found: warn
+          include-hidden-files: true
 
   # ── 3. Nuclear x10 + fire drill + brutal (headless) ────────────
   nuclear-x10:

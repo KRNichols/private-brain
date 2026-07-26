@@ -475,27 +475,31 @@ def main() -> int:
     RESULTS = []
 
     summary = ensure_and_smoke(prefix="CODEX")
-    out_dir = Path(os.environ.get("PRIVATE_BRAIN_HOME") or ".") / ".brain" / "state"
-    try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "CODEX_CLI_SMOKE.json").write_text(
-            json.dumps(
-                {
-                    "ok": summary.get("ok"),
-                    "perfect": summary.get("perfect"),
-                    "pass": PASS,
-                    "fail": FAIL,
-                    "binary": summary.get("binary"),
-                    "version": summary.get("version"),
-                    "attempts": summary.get("attempts"),
-                    "results": RESULTS,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
+    payload = {
+        "ok": summary.get("ok"),
+        "perfect": summary.get("perfect"),
+        "pass": PASS,
+        "fail": FAIL,
+        "binary": summary.get("binary"),
+        "version": summary.get("version"),
+        "attempts": summary.get("attempts"),
+        "results": RESULTS,
+    }
+    blob = json.dumps(payload, indent=2)
+    # Write to multiple places: .brain (runtime) + e2e-reports (CI artifacts; not gitignored)
+    roots = [
+        Path(os.environ.get("PRIVATE_BRAIN_HOME") or "."),
+        Path(os.environ.get("GITHUB_WORKSPACE") or "."),
+        Path("."),
+    ]
+    for root in roots:
+        for rel in (Path(".brain") / "state", Path("e2e-reports")):
+            try:
+                d = (root / rel).resolve()
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "CODEX_CLI_SMOKE.json").write_text(blob, encoding="utf-8")
+            except Exception:
+                pass
 
     print("\n" + "=" * 72)
     print(

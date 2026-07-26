@@ -835,13 +835,17 @@ def main() -> int:
         }
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         write_json(STATE_DIR / "NUCLEAR_CONVERSATION_E2E.json", report)
-        try:
-            (ROOT / ".brain" / "state").mkdir(parents=True, exist_ok=True)
-            (ROOT / ".brain" / "state" / "NUCLEAR_CONVERSATION_E2E.json").write_text(
-                json.dumps(report, indent=2, default=str), encoding="utf-8"
-            )
-        except Exception:
-            pass
+        blob = json.dumps(report, indent=2, default=str)
+        for d in (
+            ROOT / ".brain" / "state",
+            ROOT / "e2e-reports",
+            Path(os.environ.get("GITHUB_WORKSPACE") or ROOT) / "e2e-reports",
+        ):
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "NUCLEAR_CONVERSATION_E2E.json").write_text(blob, encoding="utf-8")
+            except Exception:
+                pass
 
         print("\n" + "=" * 76)
         print(f" NUCLEAR CONVERSATION E2E: pass={PASS} fail={FAIL} soft={SOFT}")
