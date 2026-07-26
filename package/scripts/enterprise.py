@@ -172,7 +172,7 @@ def load_policy() -> dict[str, Any]:
     return cfg
 
 
-def load_sres_policy() -> dict[str, Any]:
+def load_corporate_library_policy() -> dict[str, Any]:
     """Load machine-readable Corporate Library / Protected Gateway approved-source package policy."""
     path = brain_root() / "config" / "judge_corporate_library_policy.json"
     if not path.exists():
@@ -204,9 +204,9 @@ def judge_corporate_library_policy() -> dict[str, Any]:
     Not preferred:
       offline wheel kit as primary delivery.
     """
-    pol = load_sres_policy()
+    pol = load_corporate_library_policy()
     pip_index = (os.environ.get("PB_PIP_INDEX_URL") or os.environ.get("PIP_INDEX_URL") or "").strip()
-    require_art = (os.environ.get("PB_PIP_REQUIRE_ARTIFACTORY") or "").strip().lower() in {
+    require_art = (os.environ.get("PB_PIP_REQUIRE_CORPORATE_INDEX") or "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -879,13 +879,13 @@ def doctor_enterprise() -> dict[str, Any]:
     try:
         corporate_library = judge_corporate_library_policy()
         add(
-            "sres_approved_source",
+            "corporate_library_approved_source",
             bool(corporate_library.get("ok")),
             f"model={corporate_library.get('model')} pip_index_set={corporate_library.get('pip_index_set')} "
             f"policy_present={corporate_library.get('policy_present')} wheels={corporate_library.get('vendor_wheels_count')}",
         )
     except Exception as e:
-        add("sres_approved_source", True, f"skip:{e}")  # soft-ish; core still works
+        add("corporate_library_approved_source", True, f"skip:{e}")  # soft-ish; core still works
 
     try:
         from audit_lib import verify_chain
@@ -1034,7 +1034,7 @@ def doctor_enterprise() -> dict[str, Any]:
     # Soft: raw host purity strict; hard: parity, chain, ops quarantine, hooks
     soft_names = {
         "corpus_public_ratio",
-        "sres_approved_source",
+        "corporate_library_approved_source",
         "optional_capabilities",
         "sessions_restored",  # soft unless empty without ack — day-1 mission hardens
     }
@@ -1342,10 +1342,10 @@ def main() -> int:
                     "classification": default_classification(),
                     "policy": load_policy(),
                     "pip_index": os.environ.get("PB_PIP_INDEX_URL") or os.environ.get("PIP_INDEX_URL"),
-                    "corporate-package-index_required": os.environ.get("PB_PIP_REQUIRE_ARTIFACTORY"),
+                    "corporate-package-index_required": os.environ.get("PB_PIP_REQUIRE_CORPORATE_INDEX"),
                     "package_model": "approved_source",
                     "not_package_model": "offline_wheel_kit_primary",
-                    "sres_policy": judge_corporate_library_policy(),
+                    "corporate_library_policy": judge_corporate_library_policy(),
                 },
                 indent=2,
                 default=str,
@@ -1386,7 +1386,7 @@ def main() -> int:
         return 0 if r.get("ok") else 2
     if args.cmd == "corporate_library-policy":
         r = judge_corporate_library_policy()
-        r["full_policy"] = load_sres_policy()
+        r["full_policy"] = load_corporate_library_policy()
         print(json.dumps(r, indent=2, default=str))
         return 0 if r.get("ok") else 2
     if args.cmd == "capabilities":

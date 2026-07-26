@@ -411,7 +411,7 @@ flowchart LR
   GE --> VENV["private-brain venv"]
   CORE --> ENGINE["hooks · orchestrate · swarm · LGH"]
   VENV --> GUI["-GodsEye graph_gl"]
-  ENV -.->|PB_PIP_REQUIRE_ARTIFACTORY=1| GATE["block public PyPI"]
+  ENV -.->|PB_PIP_REQUIRE_CORPORATE_INDEX=1| GATE["block public PyPI"]
 ```
 
 ## Enterprise quarantine · purity · multi-agent validate

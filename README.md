@@ -7,9 +7,6 @@
 **Codex sideload.** Install once. Open Codex. Talk.  
 **Goal: real results only** — not agent counts, not token theater.
 
-**Codex sideload.** Install once. Open Codex. Talk.  
-**Goal: real results only** — not agent counts, not token theater.
-
 Mac ≡ Windows.  
 Corporate `golden_join.json` (no secrets) goes in `tools/install/` when you have it.
 
@@ -282,3 +279,19 @@ tools/
 | No golden yet | Headless/local is fine; drop `golden_join.json` later |
 
 Day 1 is successful when **work got smarter with proof**, not when the graph looked busy.
+
+---
+
+## Sanitized vocabulary (public)
+
+This public repo uses neutral names only:
+
+| Public term | Meaning |
+|-------------|---------|
+| **Corporate** | Your organization name |
+| **Corporate Library** | Approved internal package repositories |
+| **Protected Gateway** | Proxied / protected package gateway |
+| **Corporate Package Index** | Approved pip/index URL for optional deps |
+
+No customer-specific names appear in scripts, docs, or kit labels.
+

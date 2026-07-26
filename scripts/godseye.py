@@ -245,7 +245,7 @@ def ensure_gui(*, replace: bool = False, force: bool = False) -> dict:
     - replace=True only for explicit restart (kills orphans then starts one).
     - Backend auto-selected from importable modules (gl|cpu|off) via capabilities.
     """
-    # Pick best available backend from what's installed (home full stack / Corporate Corporate Library subset)
+    # Pick best available backend from what's installed (home full stack / Corporate Library subset)
     try:
         from capabilities import apply_env_hints, probe, write_state
 

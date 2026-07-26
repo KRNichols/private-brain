@@ -31,7 +31,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 SOFT_DOCTOR = {
     "corpus_public_ratio",  # raw host mix may stay high after OSS load-test
     "optional_capabilities",
-    "sres_approved_source",
+    "corporate_library_approved_source",
     "sessions_restored",  # soft in doctor; hard in mission phase
     "pilot_ready_strict",
 }

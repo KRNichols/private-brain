@@ -172,6 +172,10 @@ if (Test-Path $org) {
         if (Test-Path $day1) { & $py $day1 @dArgs }
     }
     & $py $org @oArgs
+    $orgRc = $LASTEXITCODE
+    if ($orgRc -ne 0 -and $null -ne $orgRc) {
+        Write-Host "NOTE: organism exit $orgRc (not fully ALIVE yet is OK on Day-1 — hooks/sideload still READY)" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "organism.py missing — run SETUP from complete kit" -ForegroundColor Red
     exit 1

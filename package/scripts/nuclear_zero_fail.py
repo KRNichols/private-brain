@@ -188,7 +188,7 @@ def main() -> int:
         soft = {
             "corpus_public_ratio",
             "corpus_pilot_ready",
-            "sres_approved_source",
+            "corporate_library_approved_source",
             "optional_capabilities",
         }
         hard_fail = [c for c in (d.get("checks") or []) if not c.get("ok") and c.get("name") not in soft]

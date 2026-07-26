@@ -2,7 +2,7 @@
 """Intelligent Day-1 first start — map environment and choose package route.
 
 Routes:
-  corporate_library   — Corporate Library Corporate Package Index (default Corporate approved pip index)
+  corporate_library   — Corporate Library (Corporate Package Index) (default Corporate approved pip index)
   aws    — AWS CodeArtifact / Government Cloud-style approved index
   headless — stdlib-only core (no third-party; GodsEye off)
 
@@ -136,8 +136,8 @@ def probe_environment() -> dict[str, Any]:
 
 ROUTES = {
     "corporate_library": {
-        "label": "Corporate Library Corporate Package Index",
-        "blurb": "Corporate Corporate Library PyPI remote (default Corporate). GodsEye optional wheels from Corporate Library.",
+        "label": "Corporate Library (Corporate Package Index)",
+        "blurb": "Corporate Library PyPI remote (default Corporate). GodsEye optional wheels from Corporate Library.",
         "need_index": True,
         "index_kind": "corporate_library",
         "example_index": "https://REPLACE.corporate_library.corporate-package-index.example/corporate-package-index/api/pypi/pypi-virtual/simple",
@@ -195,6 +195,8 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
     coc_route = ((coc.get("suggest") or {}).get("recommended_route") or "").strip().lower()
     if route:
         r = route.strip().lower()
+        if r in ("library", "corp", "corporate", "corporate-library"):
+            r = "corporate_library"
         if r in ROUTES:
             return r
     if noninteractive:
@@ -325,7 +327,7 @@ def collect_answers(
         print()
         print("══ Packages & libraries ═════════════════════════════════")
         print("Hey — where can I download packages and libraries?")
-        print("  (Corporate Library Corporate Package Index / CodeArtifact / or headless with no pip)")
+        print("  (Corporate Library (Corporate Package Index) / CodeArtifact / or headless with no pip)")
         if meta["need_index"]:
             print(f"Route={route} · example: {meta['example_index']}")
             idx = _ask("Package index URL (PIP_INDEX_URL / Corporate Library simple URL)", idx or meta["example_index"])
@@ -477,9 +479,9 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
             lines.append(f'export PIP_TRUSTED_HOST="{th}"')
             lines.append(f'export PB_PIP_TRUSTED_HOST="{th}"')
         if answers.get("require_corporate-package-index"):
-            lines.append("export PB_PIP_REQUIRE_ARTIFACTORY=1")
+            lines.append("export PB_PIP_REQUIRE_CORPORATE_INDEX=1")
         else:
-            lines.append("export PB_PIP_REQUIRE_ARTIFACTORY=0")
+            lines.append("export PB_PIP_REQUIRE_CORPORATE_INDEX=0")
         if answers.get("godseye_wanted"):
             lines.append("export PB_GODSEYE_WANTED=1")
         if answers.get("gitlab_url"):
@@ -533,9 +535,9 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
             lines.append(f'$env:PIP_TRUSTED_HOST = "{th}"')
             lines.append(f'$env:PB_PIP_TRUSTED_HOST = "{th}"')
         if answers.get("require_corporate-package-index"):
-            lines.append('$env:PB_PIP_REQUIRE_ARTIFACTORY = "1"')
+            lines.append('$env:PB_PIP_REQUIRE_CORPORATE_INDEX = "1"')
         else:
-            lines.append('$env:PB_PIP_REQUIRE_ARTIFACTORY = "0"')
+            lines.append('$env:PB_PIP_REQUIRE_CORPORATE_INDEX = "0"')
         if answers.get("godseye_wanted"):
             lines.append('$env:PB_GODSEYE_WANTED = "1"')
         if answers.get("gitlab_url"):

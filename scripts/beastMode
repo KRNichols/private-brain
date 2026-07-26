@@ -752,7 +752,7 @@ except Exception:
 # Soft checks: unknown/not-configured Corporate paths must not hard-fail home-dev
 soft = {
     'corpus_public_ratio', 'corpus_pilot_ready',
-    'sres_approved_source', 'optional_capabilities',
+    'corporate_library_approved_source', 'optional_capabilities',
 }
 if not d.get('enterprise'):
     soft.add('corpus_pilot_ops')

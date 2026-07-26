@@ -71,7 +71,7 @@ Content-Type: text/plain
 items.find({"repo":"<repo>","name":{"$match":"*.whl"}})
 ```
 
-**Self-config:** if pygame/OpenGL missing and index set → request install from Corporate Library; if 401 → soft-fail headless, ledger `sres_auth`, do not thrash pip.
+**Self-config:** if pygame/OpenGL missing and index set → request install from Corporate Library; if 401 → soft-fail headless, ledger `corporate_library_auth`, do not thrash pip.
 
 ---
 

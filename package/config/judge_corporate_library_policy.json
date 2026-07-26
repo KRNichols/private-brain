@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "sres_bsf_approved_source",
+  "name": "corporate_library_approved_source",
   "title": "Corporate Library / Protected Gateway approved-source package policy (Corporate)",
   "model": "approved_source",
   "not_model": "offline_wheel_kit_primary",
@@ -45,12 +45,12 @@
     "pygame": {
       "feature": "GodsEye GUI",
       "required_for_pilot": false,
-      "if_missing": ["request_sres_onboard", "drop_godseye", "stay_headless"]
+      "if_missing": ["request_corporate_library_onboard", "drop_godseye", "stay_headless"]
     },
     "PyOpenGL": {
       "feature": "GodsEye TRUE GL backend",
       "required_for_pilot": false,
-      "if_missing": ["request_sres_onboard", "PB_GODSEYE_BACKEND=cpu", "stay_headless"]
+      "if_missing": ["request_corporate_library_onboard", "PB_GODSEYE_BACKEND=cpu", "stay_headless"]
     },
     "PyOpenGL-accelerate": {
       "feature": "optional GL accel",
@@ -92,13 +92,13 @@
   },
   "setup_policy": {
     "enterprise_requires_corporate-package-index_for_third_party": true,
-    "allow_public_pypi_when": "dev laptop only (PB_ENTERPRISE unset and PB_PIP_REQUIRE_ARTIFACTORY unset)",
+    "allow_public_pypi_when": "dev laptop only (PB_ENTERPRISE unset and PB_PIP_REQUIRE_CORPORATE_INDEX unset)",
     "skip_optional_deps_when_no_index": true,
     "headless_ok_without_pygame": true
   },
   "pass_criteria": {
     "docs_claim_offline_wheel_kit_primary": false,
-    "docs_claim_sres_bsf_primary": true,
+    "docs_claim_corporate_library_primary": true,
     "core_works_without_pip": true,
     "missing_package_actions_allowed": [
       "request_onboard",

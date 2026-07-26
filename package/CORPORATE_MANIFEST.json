@@ -1,17 +1,17 @@
 {
-  "name": "PrivateBrain-CORPORATE-20260726T182838Z",
-  "frozen_at_utc": "20260726T182838Z",
+  "name": "PrivateBrain-CORPORATE-20260726T192052Z",
+  "frozen_at_utc": "20260726T192052Z",
   "layout": "mac/ + windows/",
-  "source_live": "/Users/kevinnichols/.codex/private-brain",
+  "source_live": "/Users/kevinnichols/private-brain-public",
   "enterprise": true,
-  "day1": "START → day1_first_start (corporate-library|aws|headless)",
+  "day1": "START → day1_first_start (library|aws|headless)",
   "package_model": "approved_source",
   "not_package_model": "offline_wheel_kit_primary",
-  "primary_deps_path": "Corporate Library / Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
+  "primary_deps_path": "Corporate Library/Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
   "local_wheels": "optional last-resort cache only; never required",
-  "core_deps": "stdlib only; optional GodsEye from Corporate Library / Protected Gateway via PIP_INDEX_URL",
-  "if_package_missing": "request Corporate Library / Protected Gateway onboard or drop feature / stay headless",
+  "core_deps": "stdlib only; optional GodsEye from Corporate Library/Protected Gateway via PIP_INDEX_URL",
+  "if_package_missing": "request Corporate Library/Protected Gateway onboard or drop feature / stay headless",
   "policy": "config/judge_corporate_library_policy.json",
   "freeze_policy": "config/judge_freeze.json",
-  "notes": "No .brain corpus. Primary: Corporate Library / Protected Gateway PIP_INDEX_URL. Optional local wheels only as last-resort cache; never required. Each OS folder is self-contained."
+  "notes": "No .brain corpus. Primary: Corporate Library/Protected Gateway PIP_INDEX_URL. Optional local wheels only as last-resort cache; never required. Each OS folder is self-contained."
 }

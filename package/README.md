@@ -183,7 +183,7 @@ $env:PIP_INDEX_URL = "https://YOUR-Corporate Library-HOST/.../simple"
 $env:PB_PIP_INDEX_URL = $env:PIP_INDEX_URL
 $env:PIP_TRUSTED_HOST = "YOUR-Corporate Library-HOST"
 $env:PB_PIP_TRUSTED_HOST = $env:PIP_TRUSTED_HOST
-$env:PB_PIP_REQUIRE_ARTIFACTORY = "1"
+$env:PB_PIP_REQUIRE_CORPORATE_INDEX = "1"
 ```
 
 **Checklist:** [ ] Corporate Library set **or** conscious headless choice
@@ -666,7 +666,7 @@ cp corporate-package-index.env.example corporate-package-index.env
 # edit PIP_INDEX_URL / PIP_TRUSTED_HOST to your Corporate Library remote
 source ./corporate-package-index.env
 export PB_ENTERPRISE=1
-export PB_PIP_REQUIRE_ARTIFACTORY=1
+export PB_PIP_REQUIRE_CORPORATE_INDEX=1
 # SETUP / START_AT_CORPORATE will install pygame + PyOpenGL from that index only
 bash SETUP.command
 ```
@@ -681,7 +681,7 @@ $env:PIP_TRUSTED_HOST = "…corporate-library…"
 $env:PB_PIP_INDEX_URL = $env:PIP_INDEX_URL
 $env:PB_PIP_TRUSTED_HOST = $env:PIP_TRUSTED_HOST
 $env:PB_ENTERPRISE = "1"
-$env:PB_PIP_REQUIRE_ARTIFACTORY = "1"
+$env:PB_PIP_REQUIRE_CORPORATE_INDEX = "1"
 powershell -NoProfile -ExecutionPolicy Bypass -File .\SETUP.ps1
 ```
 
@@ -1191,7 +1191,7 @@ flowchart LR
   GE --> VENV["private-brain venv"]
   CORE --> ENGINE["hooks · orchestrate · swarm · LGH"]
   VENV --> GUI["-GodsEye graph_gl"]
-  Corporate Library -.->|PB_PIP_REQUIRE_ARTIFACTORY=1| GATE["block public PyPI"]
+  Corporate Library -.->|PB_PIP_REQUIRE_CORPORATE_INDEX=1| GATE["block public PyPI"]
 ```
 
 | Need | Corporate Package Index? |
@@ -1206,7 +1206,7 @@ export PIP_TRUSTED_HOST="…corporate-library…"
 export PB_PIP_INDEX_URL="$PIP_INDEX_URL"   # SETUP also honors PB_* forms
 export PB_PIP_TRUSTED_HOST="$PIP_TRUSTED_HOST"
 export PB_ENTERPRISE=1
-export PB_PIP_REQUIRE_ARTIFACTORY=1
+export PB_PIP_REQUIRE_CORPORATE_INDEX=1
 # SETUP / start_at_corporate install optional GUI deps from that index only
 ```
 

@@ -4,22 +4,107 @@
 # Core is stdlib; optional GodsEye installs from Corporate Package Index at destination.
 set -euo pipefail
 
-# portable copy (rsync preferred; cp -a fallback for Windows Git Bash)
+# portable copy (rsync preferred; cp -a fallback for Windows Git Bash / runners without rsync)
 _pb_copy_tree() {
-  local src="$1" dst="$2"; shift 2 || true
+  # usage: _pb_copy_tree SRC/ DST/ [--delete] [--exclude PAT ...]
+  local src="" dst=""
+  local -a excludes=()
+  local do_delete=0
+  local arg
+  local -a positional=()
+  for arg in "$@"; do
+    if [[ "$arg" == "--delete" ]]; then
+      do_delete=1
+    elif [[ "$arg" == "--exclude" ]]; then
+      : # next handled below with shift pattern — flatten: we parse differently
+    else
+      positional+=("$arg")
+    fi
+  done
+  # Re-parse with proper exclude support
+  positional=()
+  excludes=()
+  do_delete=0
+  local prev=""
+  for arg in "$@"; do
+    if [[ "$prev" == "--exclude" ]]; then
+      excludes+=("$arg"); prev=""; continue
+    fi
+    if [[ "$arg" == "--exclude" ]]; then prev="$arg"; continue; fi
+    if [[ "$arg" == "--delete" ]]; then do_delete=1; continue; fi
+    positional+=("$arg")
+  done
+  src="${positional[0]:-}"
+  dst="${positional[1]:-}"
+  if [[ -z "$src" || -z "$dst" ]]; then
+    echo "ERROR: _pb_copy_tree needs SRC DST" >&2
+    return 1
+  fi
   mkdir -p "$dst"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a "$@" "$src" "$dst"
-  else
-    # ignore exclude flags for fallback simplicity
+    local -a rs=(rsync -a)
+    [[ "$do_delete" == "1" ]] && rs+=(--delete)
+    local ex
+    for ex in "${excludes[@]+"${excludes[@]}"}"; do
+      rs+=(--exclude "$ex")
+    done
+    # ensure trailing slash semantics for dir contents
     if [[ -d "$src" ]]; then
-      cp -a "$src"/. "$dst"/ 2>/dev/null || cp -a "$src"/* "$dst"/ 2>/dev/null || true
+      "${rs[@]}" "${src%/}/" "${dst%/}/"
     else
-      cp -a "$src" "$dst" 2>/dev/null || true
+      "${rs[@]}" "$src" "$dst"
     fi
+    return 0
+  fi
+  # cp fallback
+  if [[ -d "$src" ]]; then
+    if [[ "$do_delete" == "1" ]]; then
+      # best-effort: clear dest then copy (careful not wipe unrelated)
+      find "$dst" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    fi
+    # copy contents
+    shopt -s dotglob nullglob
+    local item base
+    for item in "${src%/}"/*; do
+      base="$(basename "$item")"
+      local skip=0 ex
+      for ex in "${excludes[@]+"${excludes[@]}"}"; do
+        # simple basename / suffix match
+        if [[ "$base" == $ex || "$base" == *.pyc || "$item" == *"/__pycache__"* ]]; then
+          if [[ "$base" == "$ex" || "$ex" == "__pycache__" && "$base" == "__pycache__" || "$ex" == "*.pyc" && "$base" == *.pyc || "$ex" == ".DS_Store" && "$base" == ".DS_Store" || "$ex" == "venv" && "$base" == "venv" || "$ex" == ".brain" && "$base" == ".brain" ]]; then
+            skip=1; break
+          fi
+          case "$ex" in
+            __pycache__|venv|.brain|.DS_Store|*.pyc|*.env)
+              if [[ "$base" == "$ex" || ( "$ex" == "*.pyc" && "$base" == *.pyc ) || ( "$ex" == "*.env" && "$base" == *.env ) ]]; then
+                skip=1; break
+              fi
+              ;;
+          esac
+        fi
+        if [[ "$base" == "$ex" ]]; then skip=1; break; fi
+        if [[ "$ex" == "*.pyc" && "$base" == *.pyc ]]; then skip=1; break; fi
+        if [[ "$ex" == "*.env" && "$base" == *.env && "$base" != *.env.example ]]; then skip=1; break; fi
+      done
+      [[ "$skip" == "1" ]] && continue
+      if [[ -d "$item" ]]; then
+        mkdir -p "$dst/$base"
+        # recursive without re-parsing excludes deeply — prune known bad dirs
+        if [[ "$base" == "__pycache__" || "$base" == "venv" || "$base" == ".brain" ]]; then
+          continue
+        fi
+        cp -R "$item"/. "$dst/$base"/ 2>/dev/null || cp -R "$item" "$dst/" 2>/dev/null || true
+        find "$dst/$base" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+        find "$dst/$base" -name '*.pyc' -delete 2>/dev/null || true
+      else
+        cp -f "$item" "$dst/$base" 2>/dev/null || true
+      fi
+    done
+    shopt -u dotglob nullglob
+  else
+    cp -f "$src" "$dst" 2>/dev/null || true
   fi
 }
-
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LIVE="${PRIVATE_BRAIN_HOME:-$HOME/.codex/private-brain}"
@@ -44,35 +129,29 @@ fi
 mkdir -p "$PKG" "$DIST" "$PKG/config" "$PKG/scripts" "$PKG/hooks" "$PKG/visualizer"
 
 echo "==> Sync engine live → package (no .brain, no venv)"
-rsync -a --delete \
-  --exclude '.brain' \
-  --exclude 'venv' \
-  --exclude '__pycache__' \
-  --exclude '*.pyc' \
-  --exclude '.DS_Store' \
-  --exclude 'corporate.env' \
-  --exclude 'corporate.env.ps1' \
-  --exclude 'day1.env' \
-  --exclude 'day1.env.ps1' \
-  --exclude 'corporate-package-index.env' \
-  --exclude '*.env' \
-  "$LIVE/scripts/" "$PKG/scripts/" 2>/dev/null || cp -R "$LIVE/scripts/"* "$PKG/scripts/"
+_pb_copy_tree "$LIVE/scripts" "$PKG/scripts" --delete --exclude .brain --exclude venv --exclude __pycache__ --exclude "*.pyc" --exclude .DS_Store --exclude corporate.env --exclude day1.env --exclude corporate-package-index.env --exclude "*.env"
 # Never ship secrets / local judge dumps
 rm -f "$PKG"/day1.env* "$PKG"/corporate.env* "$PKG"/corporate-package-index.env 2>/dev/null || true
 find "$PKG" \( -name 'day1.env*' -o -name 'corporate.env*' -o -name 'corporate-package-index.env' \) -delete 2>/dev/null || true
 find "$PKG" -name '*.env' ! -name '*.env.example' -delete 2>/dev/null || true
 # day1 wizard lives under package/scripts (source of truth already synced from live above)
-rsync -a --exclude '__pycache__' "$LIVE/hooks/" "$PKG/hooks/" 2>/dev/null || true
-rsync -a --exclude '__pycache__' "$LIVE/visualizer/" "$PKG/visualizer/" 2>/dev/null || true
-rsync -a --exclude '__pycache__' "$LIVE/private_brain/" "$PKG/private_brain/" 2>/dev/null || true
-rsync -a --exclude '__pycache__' "$LIVE/loop_graph_harness/" "$PKG/loop_graph_harness/" 2>/dev/null || true
-rsync -a --exclude '__pycache__' "$LIVE/agents/" "$PKG/agents/" 2>/dev/null || true
-rsync -a --exclude '__pycache__' "$LIVE/codex-agents/" "$PKG/codex-agents/" 2>/dev/null || true
-rsync -a "$LIVE/config/" "$PKG/config/" 2>/dev/null || true
-for f in beast-mode.md beast-enterprise.md README.md READY.md SIDELOAD.md ruff.toml developer_instructions.txt Corporate Library_ARTIFACTORY.md MISSION_MONDAY.md; do
-  [[ -f "$LIVE/$f" ]] && cp -f "$LIVE/$f" "$PKG/$f"
+_pb_copy_tree "$LIVE/hooks" "$PKG/hooks" --exclude __pycache__
+_pb_copy_tree "$LIVE/visualizer" "$PKG/visualizer" --exclude __pycache__
+_pb_copy_tree "$LIVE/private_brain" "$PKG/private_brain" --exclude __pycache__
+_pb_copy_tree "$LIVE/loop_graph_harness" "$PKG/loop_graph_harness" --exclude __pycache__
+_pb_copy_tree "$LIVE/agents" "$PKG/agents" --exclude __pycache__
+_pb_copy_tree "$LIVE/codex-agents" "$PKG/codex-agents" --exclude __pycache__
+_pb_copy_tree "$LIVE/config" "$PKG/config"
+for f in beast-mode.md beast-enterprise.md README.md READY.md SIDELOAD.md ruff.toml developer_instructions.txt CORPORATE_PACKAGE_INDEX.md MISSION_MONDAY.md; do
+  if [[ -f "$LIVE/$f" ]]; then
+    # When LIVE is the public repo root, do not clobber package docs with kit ROOT_README
+    if [[ "$f" == "README.md" && "$LIVE" == "$ROOT" && -f "$PKG/README.md" ]]; then
+      continue
+    fi
+    cp -f "$LIVE/$f" "$PKG/$f"
+  fi
 done
-[[ -f "$ROOT/Corporate Library_ARTIFACTORY.md" ]] && cp -f "$ROOT/Corporate Library_ARTIFACTORY.md" "$PKG/Corporate Library_ARTIFACTORY.md"
+[[ -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" ]] && cp -f "$ROOT/CORPORATE_PACKAGE_INDEX.md" "$PKG/CORPORATE_PACKAGE_INDEX.md"
 [[ -f "$ROOT/corporate-package-index.env.example" ]] && cp -f "$ROOT/corporate-package-index.env.example" "$PKG/corporate-package-index.env.example"
 [[ -f "$ROOT/corporate.env.example" ]] && cp -f "$ROOT/corporate.env.example" "$PKG/corporate.env.example"
 # Corporate Library/Protected Gateway approved-source + freeze policy (not offline wheel kit primary)
@@ -133,7 +212,7 @@ cat > "$PKG/vendor/README.md" <<'EOF'
 Optional GodsEye packages install at the destination from the approved Corporate Package Index remote:
 
 ```bash
-export PIP_INDEX_URL="https://…sres-or-bsf…/simple"
+export PIP_INDEX_URL="https://…corporate-package-index…/simple"
 export PIP_TRUSTED_HOST="…"
 # then SETUP / pip install -r visualizer/requirements.txt
 ```
@@ -147,7 +226,7 @@ If a package is missing from Corporate Library/Protected Gateway → **request o
 - Must be Corporate Package Index-origin if used; do not scrape public PyPI into this folder.
 - Empty directory is normal and correct.
 
-See `../Corporate Library_ARTIFACTORY.md`, `../config/judge_corporate_library_policy.json`, and `../config/judge_freeze.json`.
+See `../CORPORATE_PACKAGE_INDEX.md`, `../config/judge_corporate_library_policy.json`, and `../config/judge_freeze.json`.
 EOF
 
 echo "==> MANIFEST"
@@ -158,7 +237,7 @@ cat > "$PKG/CORPORATE_MANIFEST.json" <<EOF
   "layout": "mac/ + windows/",
   "source_live": "$LIVE",
   "enterprise": true,
-  "day1": "START → day1_first_start (sres|aws|headless)",
+  "day1": "START → day1_first_start (library|aws|headless)",
   "package_model": "approved_source",
   "not_package_model": "offline_wheel_kit_primary",
   "primary_deps_path": "Corporate Library/Protected Gateway PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
@@ -195,17 +274,11 @@ stage_os_kit() {
   cp -f "$SHARED/DIAGRAM.md" "$dest/DIAGRAM.md"
 
   # ── tools plane READMEs ──
-  rsync -a --exclude '.DS_Store' "$TOOLS_SRC/" "$dest/tools/"
+_pb_copy_tree "$TOOLS_SRC" "$dest/tools" --exclude .DS_Store
 
   # ── tools/engine = package payload ──
   mkdir -p "$dest/tools/engine"
-  rsync -a \
-    --exclude '__pycache__' \
-    --exclude '*.pyc' \
-    --exclude '.DS_Store' \
-    --exclude 'venv' \
-    --exclude '.brain' \
-    "$PKG/" "$dest/tools/engine/"
+_pb_copy_tree "$PKG" "$dest/tools/engine" --exclude __pycache__ --exclude "*.pyc" --exclude .DS_Store --exclude venv --exclude .brain
   # deep docs into engine
   mkdir -p "$dest/tools/engine/docs"
   for f in INDEX.md LOOP_GRAPH_SOVEREIGN.md MERMAID.md KINGDOM_KEYS.md GODSEYE_HELP.md; do
@@ -221,7 +294,7 @@ stage_os_kit() {
   cp -f "$ROOT/corporate-package-index.env.example" "$INS/corporate-package-index.env.example" 2>/dev/null || true
   cat > "$INS/ROUTES.txt" <<'EOF'
 Package routes (START → day1). Same Mac/Windows.
-  sres | aws | headless
+  library | aws | headless
 Corporate: place golden_join.json here (no secrets). Else interview/headless.
 EOF
 

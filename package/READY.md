@@ -30,7 +30,7 @@ cp corporate-package-index.env.example corporate-package-index.env
 # edit PIP_INDEX_URL / PIP_TRUSTED_HOST → Corporate Library
 source ./corporate-package-index.env
 export PB_ENTERPRISE=1
-export PB_PIP_REQUIRE_ARTIFACTORY=1
+export PB_PIP_REQUIRE_CORPORATE_INDEX=1
 
 # 1) Install once (or one-click day-1)
 bash SETUP.command
@@ -194,7 +194,7 @@ python scripts/orchestrate.py concert --prompt "your question"
 | `PB_ALLOWLIST_HOSTS` | Comma hosts for internal ingest |
 | `PIP_INDEX_URL` / `PB_PIP_INDEX_URL` | **Corporate Library Corporate Package Index** PyPI remote |
 | `PIP_TRUSTED_HOST` / `PB_PIP_TRUSTED_HOST` | Corporate Library host |
-| `PB_PIP_REQUIRE_ARTIFACTORY` | Refuse silent public PyPI for optional deps |
+| `PB_PIP_REQUIRE_CORPORATE_INDEX` | Refuse silent public PyPI for optional deps |
 | `GITLAB_TOKEN` | Optional API token; never print / commit |
 | `PB_GODSEYE` | `1` → enable Live Ops |
 | `PB_GODSEYE_BACKEND` | `gl` (default with `-GodsEye`) or `cpu` |

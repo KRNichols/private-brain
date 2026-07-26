@@ -234,7 +234,7 @@ def main() -> int:
         h = self_heal()
         gate("D_self_heal_ok", bool(h.get("ok")) if isinstance(h, dict) else False, str(h.get("actions") if isinstance(h, dict) else h)[:80])
         d = doctor_enterprise()
-        soft = {"corpus_public_ratio", "corpus_pilot_ready", "sres_approved_source", "optional_capabilities"}
+        soft = {"corpus_public_ratio", "corpus_pilot_ready", "corporate_library_approved_source", "optional_capabilities"}
         hard_fail = [c for c in (d.get("checks") or []) if not c.get("ok") and c.get("name") not in soft]
         gate("D_doctor_hard", not hard_fail and bool(d.get("ok")), str([c.get("name") for c in hard_fail]))
     except Exception as e:

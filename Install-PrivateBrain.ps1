@@ -296,7 +296,7 @@ if ($py) {
     # Corporate: Corporate Library/Protected Gateway Corporate Package Index via PIP_INDEX_URL — not offline wheel kit primary
     $indexUrl = if ($env:PB_PIP_INDEX_URL) { $env:PB_PIP_INDEX_URL } elseif ($env:PIP_INDEX_URL) { $env:PIP_INDEX_URL } else { $null }
     $trusted = if ($env:PB_PIP_TRUSTED_HOST) { $env:PB_PIP_TRUSTED_HOST } elseif ($env:PIP_TRUSTED_HOST) { $env:PIP_TRUSTED_HOST } else { $null }
-    $enterprise = ($env:PB_ENTERPRISE -eq "1") -or ($env:PB_PIP_REQUIRE_ARTIFACTORY -eq "1")
+    $enterprise = ($env:PB_ENTERPRISE -eq "1") -or ($env:PB_PIP_REQUIRE_CORPORATE_INDEX -eq "1")
     $installed = $false
     if ($indexUrl -and (Test-Path $req)) {
         try {
@@ -318,7 +318,7 @@ if ($py) {
         } catch { Write-Warn "visualizer deps: $_" }
     }
     if (-not $installed -and $enterprise) {
-        Write-Warn "enterprise: no PIP_INDEX_URL — skipping pygame (headless OK). Set corporate-package-index.env (Corporate Library/Protected Gateway) or request onboard. See SRES_ARTIFACTORY.md / config/judge_sres_policy.json"
+        Write-Warn "enterprise: no PIP_INDEX_URL — skipping pygame (headless OK). Set corporate-package-index.env (Corporate Library/Protected Gateway) or request onboard. See CORPORATE_PACKAGE_INDEX.md / config/judge_corporate_library_policy.json"
     }
     try {
         & $venvPy -c "import pygame" 2>$null

@@ -112,7 +112,7 @@ try:
 except ImportError:
     raise SystemExit("TRUE GL needs PyOpenGL — pip install PyOpenGL (or PB_GODSEYE_BACKEND=cpu)")
 
-# Optional numpy for GPU-side float buffers (home free; Corporate Corporate Library optional)
+# Optional numpy for GPU-side float buffers (home free; Corporate Library optional)
 try:
     import numpy as np  # type: ignore
 except Exception:  # pragma: no cover

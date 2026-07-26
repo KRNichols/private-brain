@@ -414,7 +414,7 @@ def pack_doctor() -> dict[str, Any]:
     soft_names = {
         "corpus_public_ratio",
         "corpus_pilot_ready",
-        "sres_approved_source",
+        "corporate_library_approved_source",
         "optional_capabilities",
     }
     if not is_enterprise():

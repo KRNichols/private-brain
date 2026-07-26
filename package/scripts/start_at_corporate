@@ -161,7 +161,7 @@ fi
 export PB_ENTERPRISE=1
 export PB_PROGRAM_ID="$PROGRAM"
 export PB_CLASSIFICATION="$CLASS"
-export PB_PIP_REQUIRE_ARTIFACTORY="${PB_PIP_REQUIRE_ARTIFACTORY:-1}"
+export PB_PIP_REQUIRE_CORPORATE_INDEX="${PB_PIP_REQUIRE_CORPORATE_INDEX:-1}"
 if [[ -n "$HOSTS" ]]; then
   export PB_ALLOWLIST_HOSTS="$HOSTS"
 fi
@@ -211,7 +211,7 @@ ENVF="$PRIVATE_BRAIN_HOME/corporate.env"
   echo "export PB_ENTERPRISE=1"
   echo "export PB_PROGRAM_ID=\"$PROGRAM\""
   echo "export PB_CLASSIFICATION=\"$CLASS\""
-  echo "export PB_PIP_REQUIRE_ARTIFACTORY=1"
+  echo "export PB_PIP_REQUIRE_CORPORATE_INDEX=1"
   if [[ -n "${PIP_INDEX_URL:-}" ]]; then
     echo "export PIP_INDEX_URL=\"$PIP_INDEX_URL\""
     echo "export PB_PIP_INDEX_URL=\"$PIP_INDEX_URL\""

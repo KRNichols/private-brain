@@ -7,12 +7,12 @@
 Optional GodsEye packages install at the destination from the approved Corporate Package Index remote:
 
 ```bash
-export PIP_INDEX_URL="https://…corporate-library-or-protected-gateway…/simple"
+export PIP_INDEX_URL="https://…corporate-package-index…/simple"
 export PIP_TRUSTED_HOST="…"
 # then SETUP / pip install -r visualizer/requirements.txt
 ```
 
-If a package is missing from Corporate Library / Protected Gateway → **request onboarding** or stay **headless** (core is stdlib).
+If a package is missing from Corporate Library/Protected Gateway → **request onboarding** or stay **headless** (core is stdlib).
 
 ## Local wheels (`vendor/wheels/`)
 

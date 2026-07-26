@@ -354,7 +354,7 @@ def phase_local_ready(report: dict[str, Any], quiet: bool) -> None:
         d = doctor_enterprise()
         soft = {
             "corpus_public_ratio",
-            "sres_approved_source",
+            "corporate_library_approved_source",
             "optional_capabilities",
             "corpus_pilot_ready",
         }

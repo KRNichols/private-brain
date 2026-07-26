@@ -77,7 +77,7 @@ def detect_environment() -> dict[str, Any]:
         or ""
     ).strip()
     enterprise = os.environ.get("PB_ENTERPRISE", "").strip() in ("1", "true", "yes")
-    require = os.environ.get("PB_PIP_REQUIRE_ARTIFACTORY", "").strip().lower() in (
+    require = os.environ.get("PB_PIP_REQUIRE_CORPORATE_INDEX", "").strip().lower() in (
         "1",
         "true",
         "yes",
@@ -109,7 +109,7 @@ def detect_environment() -> dict[str, Any]:
         "index_url": index or None,
         "index_host": index_host,
         "trusted_host": trusted or None,
-        "sres_bsf": "only_on_corporate_with_PIP_INDEX_URL",
+        "corporate_library_gateway": "only_on_corporate_with_PIP_INDEX_URL",
         "note": (
             "Home: install optional packs freely. "
             "Corporate: Corporate Library / Protected Gateway via PIP_INDEX_URL; missing optional → degrade, core stays stdlib."

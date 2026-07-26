@@ -86,7 +86,7 @@
     },
     {
       "id": 2,
-      "name": "primary_model_sres_bsf_pip_index_url",
+      "name": "primary_model_corporate_library_pip_index_url",
       "ok": true,
       "detail": "Primary Corporate model is Corporate Library / Protected Gateway via PIP_INDEX_URL (or PB_PIP_INDEX_URL)",
       "by_script": {

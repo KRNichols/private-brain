@@ -12,3 +12,4 @@ dist/_staging_*
 .DS_Store
 *.egg-info/
 .pytest_cache/
+dist/

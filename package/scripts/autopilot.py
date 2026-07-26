@@ -143,7 +143,7 @@ def step_heal_if_needed(report: dict[str, Any], quiet: bool) -> None:
             # soft Corporate unknowns never force full heal loop alone
             if name in (
                 "corpus_public_ratio",
-                "sres_approved_source",
+                "corporate_library_approved_source",
                 "optional_capabilities",
                 "cloud",
             ):
@@ -352,10 +352,10 @@ def run(*, quiet: bool = False, no_crawl: bool = False) -> dict[str, Any]:
 
         d = doctor_enterprise()
         hard = [c.get("name") for c in (d.get("checks") or []) if not c.get("ok") and c.get("name") not in (
-            "corpus_public_ratio", "sres_approved_source", "optional_capabilities"
+            "corpus_public_ratio", "corporate_library_approved_source", "optional_capabilities"
         )]
         # re-classify soft
-        soft_names = {"corpus_public_ratio", "sres_approved_source", "optional_capabilities"}
+        soft_names = {"corpus_public_ratio", "corporate_library_approved_source", "optional_capabilities"}
         hard = []
         for c in d.get("checks") or []:
             if c.get("ok"):

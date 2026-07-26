@@ -73,7 +73,7 @@ Also supported by SETUP:
 export PB_PIP_INDEX_URL="$PIP_INDEX_URL"
 export PB_PIP_TRUSTED_HOST="$PIP_TRUSTED_HOST"
 export PB_ENTERPRISE=1   # refuses silent public PyPI for optional deps when set
-export PB_PIP_REQUIRE_ARTIFACTORY=1
+export PB_PIP_REQUIRE_CORPORATE_INDEX=1
 ```
 
 Copy `corporate-package-index.env.example` → `corporate-package-index.env` and source before SETUP.

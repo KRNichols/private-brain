@@ -102,12 +102,12 @@ else
     REQ="$PKG_DIR/visualizer/requirements.txt"
     [[ -f "$REQ" ]] || REQ="$PRIVATE_BRAIN_HOME/visualizer/requirements.txt"
 
-    # Corporate Package Index / approved index (Corporate Corporate Library) — never default to public PyPI in enterprise
+    # Corporate Package Index / approved index (Corporate Library) — never default to public PyPI in enterprise
     INDEX_URL="${PB_PIP_INDEX_URL:-${PIP_INDEX_URL:-}}"
     TRUSTED="${PB_PIP_TRUSTED_HOST:-${PIP_TRUSTED_HOST:-}}"
-    REQUIRE_ART="${PB_PIP_REQUIRE_ARTIFACTORY:-0}"
+    REQUIRE_ART="${PB_PIP_REQUIRE_CORPORATE_INDEX:-0}"
     if [[ "${PB_ENTERPRISE:-0}" == "1" ]]; then
-      REQUIRE_ART="${PB_PIP_REQUIRE_ARTIFACTORY:-1}"
+      REQUIRE_ART="${PB_PIP_REQUIRE_CORPORATE_INDEX:-1}"
     fi
 
     pip_install_req() {
@@ -129,8 +129,8 @@ else
       # vendor/wheels is NOT the primary Corporate model (legacy emergency only if present).
       if [[ "$REQUIRE_ART" == "1" || "$REQUIRE_ART" == "true" ]]; then
         echo "    enterprise: no PIP_INDEX_URL — skipping optional pygame (headless OK)"
-        echo "    set corporate-package-index.env (Corporate Library/Protected Gateway) or request package onboard — see SRES_ARTIFACTORY.md"
-        echo "    policy: config/judge_sres_policy.json (not offline wheel kit)"
+        echo "    set corporate-package-index.env (Corporate Library/Protected Gateway) or request package onboard — see CORPORATE_PACKAGE_INDEX.md"
+        echo "    policy: config/judge_corporate_library_policy.json (not offline wheel kit)"
         return 1
       fi
       # Dev laptop only: public PyPI
@@ -184,7 +184,7 @@ echo "READY — sideloaded into Codex"
 echo "  You never run Python. Only beastMode / SETUP / UNINSTALL."
 echo
 echo "  Corporate pilot:"
-echo "    ./START_AT_BOEING.command"
+echo "    ./START_AT_CORPORATE.command"
 echo "    beastMode --enterprise --doctor"
 echo "    beastMode --enterprise"
 echo

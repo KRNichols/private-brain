@@ -212,7 +212,7 @@ def phase_local_ready() -> dict[str, Any]:
     soft = {
         "corpus_public_ratio",
         "corpus_pilot_ready",
-        "sres_approved_source",
+        "corporate_library_approved_source",
         "optional_capabilities",
         "corpus_pilot_ops",  # ops soft until internal crawl
     }

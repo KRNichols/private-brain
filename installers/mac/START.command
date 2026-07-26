@@ -114,7 +114,13 @@ fi
 if [[ "${PB_GODSEYE:-1}" == "0" ]]; then
   OARGS+=(--no-godseye)
 fi
+set +e
 "$PY" "$ORG" "${OARGS[@]+"${OARGS[@]}"}"
+ORG_RC=$?
+set -e
+if [[ "${ORG_RC}" -ne 0 ]]; then
+  echo "NOTE: organism exit ${ORG_RC} (not fully ALIVE yet is OK on Day-1 — hooks/sideload still READY)"
+fi
 
 BM="$HOME/bin/beastMode"
 if [[ ! -x "$BM" ]]; then
