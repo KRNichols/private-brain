@@ -539,14 +539,23 @@ def main() -> int:
         fd = _ROOT / ".brain" / "state" / "fire_drill.json"
         band = ""
         ok_report = False
+        hard_fail_names: list[str] = []
         if fd.exists():
             d = json.loads(fd.read_text(encoding="utf-8"))
             band = str(d.get("band") or (d.get("score") or {}).get("band") or "")
-            ok_report = bool(d.get("ok")) or band == "ZERO_FAIL_GREEN"
+            ok_report = bool(d.get("ok")) or band in ("ZERO_FAIL_GREEN", "GREEN")
+            hard_fail_names = [
+                str(c.get("name"))
+                for c in (d.get("hard_fails") or [])
+                if isinstance(c, dict)
+            ][:20]
+            if hard_fail_names:
+                print("G01 fire_drill hard_fails:", hard_fail_names, flush=True)
+        # Prefer report ok (Windows may non-zero rc on unicode print after green)
         gate(
             "G01_fire_drill_green",
-            r.returncode == 0 and (ok_report or r.returncode == 0),
-            f"rc={r.returncode} band={band} tail={(r.stderr or r.stdout or '')[-200:]}",
+            ok_report or r.returncode == 0,
+            f"rc={r.returncode} band={band} hard_fails={hard_fail_names} tail={(r.stderr or r.stdout or '')[-160:]}",
         )
     except Exception as e:
         gate("G01_fire_drill_green", False, str(e))

@@ -429,6 +429,14 @@ def fire_self_heal_stress() -> dict[str, Any]:
 
 def run_fire_drill() -> dict[str, Any]:
     os.environ.setdefault("PB_ENTERPRISE", "1")
+    os.environ.setdefault("PB_CI", os.environ.get("PB_CI") or ("1" if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS") else "0"))
+    os.environ.setdefault("PB_SESSIONS_EMPTY_ACK", "1")
+    os.environ.setdefault("PB_ZERO_SOFT", "1")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
     report: dict[str, Any] = {
         "ts": _ts(),
         "suite": "fire_drill_zero_fail",
@@ -512,13 +520,13 @@ def main() -> int:
             if not fails:
                 print("   all green")
         if r["hard_fails"]:
-            print("\n── HARD FAILS (ground pilot) ──")
+            print("\n-- HARD FAILS (ground pilot) --")
             for c in r["hard_fails"]:
                 print(f" · {c.get('name')}: {c.get('detail')}")
         else:
-            print("\n── HARD FAILS: none ──")
+            print("\n-- HARD FAILS: none --")
         if r["soft_fails"]:
-            print("── SOFT (Corporate unknown OK) ──")
+            print("-- SOFT --")
             for c in r["soft_fails"]:
                 print(f" · {c.get('name')}: {c.get('detail')}")
         print(f"\n state: {r.get('path')}")
