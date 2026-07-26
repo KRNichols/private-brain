@@ -139,7 +139,8 @@ def main() -> int:
     else:
         cfg.write_text("[features]\nhooks = true\n", encoding="utf-8")
 
-    print(f"hooks installed → {codex / 'hooks.json'}")
+    # ASCII only: Windows free runners default to cp1252 and choke on arrows
+    print(f"hooks installed -> {codex / 'hooks.json'}")
     print(f"python: {py}")
     return 0
 

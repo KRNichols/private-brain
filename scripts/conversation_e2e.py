@@ -35,6 +35,17 @@ FAIL = 0
 RESULTS: list[dict[str, Any]] = []
 
 
+def _force_utf8_stdio() -> None:
+    """Windows free runners default to cp1252; avoid UnicodeEncodeError on marks."""
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("PYTHONUTF8", "1")
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
 def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
     global PASS, FAIL
     if ok:
@@ -46,8 +57,9 @@ def gate(name: str, ok: bool, detail: str = "", *, hard: bool = True) -> None:
     else:
         status = "SOFT"
     RESULTS.append({"name": name, "ok": ok, "hard": hard, "detail": detail[:300], "status": status})
-    mark = "✓" if ok else ("✗" if hard else "~")
-    extra = f" — {detail[:160]}" if detail and not ok else ""
+    # ASCII-only marks: Windows cp1252 cannot encode check/x unicode
+    mark = "OK" if ok else ("FAIL" if hard else "SOFT")
+    extra = f" - {detail[:160]}" if detail and not ok else ""
     print(f"  [{mark}] {name}{extra}")
 
 
@@ -98,9 +110,10 @@ def _mode_file(brain: Path) -> dict[str, Any]:
 
 
 def main() -> int:
+    _force_utf8_stdio()
     print("=" * 68)
-    print(" Private Brain — CONVERSATION E2E (abuse free runners)")
-    print(" Claims: auto-beast · cite/refuse · stop beast · GodsEye/Library")
+    print(" Private Brain - CONVERSATION E2E (abuse free runners)")
+    print(" Claims: auto-beast / cite-refuse / stop-beast / GodsEye+Library")
     print("=" * 68)
 
     if not SCRIPTS.is_dir():
@@ -154,11 +167,22 @@ def main() -> int:
         # ═══════════════════════════════════════════════════════════
         # A · Opening Codex auto-starts beast (SessionStart)
         # ═══════════════════════════════════════════════════════════
-        print("\n## A · Opening Codex auto-starts beast (SessionStart)")
+        print("\n## A - Opening Codex auto-starts beast (SessionStart)")
         ih = brain / "scripts" / "install_hooks.py"
         if ih.exists():
-            r = subprocess.run([sys.executable, str(ih)], env=env, capture_output=True, text=True, timeout=60)
-            gate("A00_hooks_install", r.returncode == 0, (r.stderr or r.stdout or "")[:160])
+            r = subprocess.run(
+                [sys.executable, str(ih)],
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            detail = (r.stderr or r.stdout or "").strip()[:200]
+            if r.returncode != 0 and not detail:
+                detail = f"exit={r.returncode}"
+            gate("A00_hooks_install", r.returncode == 0, detail)
         else:
             gate("A00_hooks_install", False, "install_hooks.py missing")
         gate("A01_hooks_json", (codex / "hooks.json").is_file())
@@ -197,7 +221,7 @@ def main() -> int:
         # ═══════════════════════════════════════════════════════════
         # B · Real answers cite evidence or refuse
         # ═══════════════════════════════════════════════════════════
-        print("\n## B · Real answers cite evidence or refuse")
+        print("\n## B - Real answers cite evidence or refuse")
         from enterprise import citation_gate, is_enterprise  # type: ignore
         from brain_lib import ensure_tree, write_node, query, write_json, load_all_nodes  # type: ignore
         import brain_lib as _bl  # type: ignore
@@ -338,7 +362,7 @@ def main() -> int:
         # ═══════════════════════════════════════════════════════════
         # C · stop beast mode / session behavior
         # ═══════════════════════════════════════════════════════════
-        print("\n## C · stop beast mode / session behavior")
+        print("\n## C - stop beast mode / session behavior")
         gate("C01_user_prompt_submit_present", ups.is_file())
 
         # Force beast first
@@ -412,7 +436,7 @@ def main() -> int:
         # ═══════════════════════════════════════════════════════════
         # D · GodsEye UI + Corporate Library packages (in anger)
         # ═══════════════════════════════════════════════════════════
-        print("\n## D · GodsEye + Corporate Library packages in anger")
+        print("\n## D - GodsEye + Corporate Library packages in anger")
         # GodsEye module surface
         ge_ok = False
         ge_detail = ""
@@ -518,7 +542,7 @@ def main() -> int:
         # ═══════════════════════════════════════════════════════════
         # E · Optional real codex CLI (soft)
         # ═══════════════════════════════════════════════════════════
-        print("\n## E · optional real codex CLI (soft)")
+        print("\n## E - optional real codex CLI (soft)")
         if shutil.which("codex") and os.environ.get("PB_E2E_REAL_CODEX") == "1":
             r = subprocess.run(["codex", "--version"], env=env, capture_output=True, text=True, timeout=30)
             gate("E01_codex_cli", r.returncode == 0, (r.stdout or r.stderr or "")[:80], hard=False)
@@ -558,12 +582,12 @@ def main() -> int:
         print("\n" + "=" * 68)
         print(f" conversation_e2e: pass={PASS} fail={FAIL}")
         if FAIL:
-            print(" RED — product contracts failed on free runners")
+            print(" RED - product contracts failed on free runners")
             for r in RESULTS:
                 if not r["ok"] and r["hard"]:
                     print(f"   FAIL {r['name']}: {r['detail']}")
             return 1
-        print(" GREEN — auto-beast · cite/refuse · stop-beast · GodsEye/Library")
+        print(" GREEN - auto-beast / cite-refuse / stop-beast / GodsEye+Library")
         return 0
     except Exception as e:
         traceback.print_exc()

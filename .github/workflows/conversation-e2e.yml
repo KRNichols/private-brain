@@ -47,10 +47,13 @@ jobs:
           # Real Codex CLI is optional; free runners usually have no binary/auth.
           # Set repo secret + PB_E2E_REAL_CODEX=1 later if you want a live turn.
           PB_E2E_REAL_CODEX: "0"
+          # Windows runners default to cp1252; force UTF-8 for prints + subprocess
+          PYTHONIOENCODING: "utf-8"
+          PYTHONUTF8: "1"
         run: |
           set -e
           python -m pip install -U pip >/dev/null
-          # stdlib-only core — no pygame required for conversation contracts
+          # stdlib-only core - no pygame required for conversation contracts
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
           python scripts/conversation_e2e.py
