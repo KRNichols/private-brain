@@ -26,6 +26,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Sanitize branding lint
         run: python scripts/lint_sanitized_branding.py
 
@@ -36,27 +37,34 @@ jobs:
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
           PB_NUCLEAR_HEADLESS: "1"
         run: |
-          set -e
+          set -euo pipefail
           bash scripts/freeze_for_corporate
           ls -la dist/
           test -f dist/PrivateBrain-WINDOWS-READY.zip
           test -f dist/PrivateBrain-MAC-READY.zip
+          test -f dist/READY.sha256
+
       - name: Publish / update latest release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
+          set -euo pipefail
           TAG="ready-latest"
-          # Ensure a rolling "ready-latest" release exists
+          NOTES_FILE="$(mktemp)"
+          cat > "$NOTES_FILE" <<'EOF'
+          Download **your OS zip only**. Unzip → START → open Codex.
+
+          **Windows:** PrivateBrain-WINDOWS-READY.zip → tools\install\START.ps1
+          **Mac:** PrivateBrain-MAC-READY.zip → tools/install/START.command
+
+          Do not clone the repo to install.
+          EOF
+          # Strip leading indent from heredoc body (YAML keeps it)
+          sed -i 's/^          //' "$NOTES_FILE"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --title "Private Brain READY kits (Mac + Windows)" \
-              --notes "Download **your OS zip only**. Unzip → START → open Codex.
-
-**Windows:** PrivateBrain-WINDOWS-READY.zip → tools\\\\install\\\\START.ps1
-**Mac:** PrivateBrain-MAC-READY.zip → tools/install/START.command
-
-Do not clone the repo to install." \
+              --notes-file "$NOTES_FILE" \
               --latest
           fi
           gh release upload "$TAG" \
@@ -64,9 +72,9 @@ Do not clone the repo to install." \
             dist/PrivateBrain-MAC-READY.zip \
             dist/READY.sha256 \
             --clobber
-          # Also attach latest CORPORATE dual-OS if present
           CORP=$(ls -t dist/PrivateBrain-CORPORATE-*.zip 2>/dev/null | head -1 || true)
           if [ -n "$CORP" ]; then
             gh release upload "$TAG" "$CORP" --clobber
           fi
+          rm -f "$NOTES_FILE"
           echo "Published to https://github.com/${{ github.repository }}/releases/tag/$TAG"
