@@ -466,3 +466,16 @@ Nuclear Winter runs `scripts/ci_force_feed_public.py` on free runners with **rea
 
 Tiny limits for CI time. On failure: beast heal + retry. Report: `.brain/state/CI_FORCE_FEED_PUBLIC.json`.
 
+### Coverage judge (every package line)
+
+CI runs `scripts/judge_package_coverage.py` on the runner:
+
+1. **py_compile** every `scripts/*.py` + hooks  
+2. **Import** every module under `coverage.py`  
+3. **CLI --help** smoke for argparse entrypoints  
+4. **Functional** brain_lib + citation_gate  
+5. **Optional full** (`PB_COVERAGE_FULL=1`): kingdom + rag_dag e2e under coverage  
+
+Fails if critical modules stay at **0%** or mean coverage &lt; `PB_COVERAGE_MIN` (default 15, ratchet up).  
+Report: `.brain/state/PACKAGE_COVERAGE_JUDGE.json`
+
