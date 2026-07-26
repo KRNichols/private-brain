@@ -315,6 +315,45 @@ def main() -> int:
                 if str(n.get("source") or "").lower() == "jira" or str(n.get("id") or "").startswith("jira:")
             ]
             feeds["sources"]["jira_retry"] = {"ok": r3.get("ok"), "rc": r3.get("rc"), "nodes": len(j_nodes)}
+        if len(j_nodes) == 0:
+            # Hard REST seed from public Apache Jira (search API) — real forge data
+            try:
+                import json as _json
+                import urllib.parse
+                import urllib.request
+
+                from ingest_bus import ingest_node  # type: ignore
+
+                jql = urllib.parse.quote("project = KAFKA ORDER BY updated DESC")
+                url = f"https://issues.apache.org/jira/rest/api/2/search?jql={jql}&maxResults=10&fields=summary,description,status"
+                req = urllib.request.Request(url, headers={"User-Agent": "PrivateBrain-ForceFeed/1.0"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = _json.loads(resp.read().decode("utf-8", errors="replace"))
+                for iss in data.get("issues") or []:
+                    key = iss.get("key") or "UNK"
+                    fields = iss.get("fields") or {}
+                    ingest_node(
+                        f"jira:issue:{key}",
+                        type="Issue",
+                        source="jira",
+                        title=str(fields.get("summary") or key),
+                        tier="T2",
+                        uri=f"https://issues.apache.org/jira/browse/{key}",
+                        content=str(fields.get("description") or "")[:4000],
+                        tags=["jira", "issue", "force-feed", "apache"],
+                        props={"host": "issues.apache.org", "key": key},
+                        agent_id="ci_force_feed",
+                        role="jira-deep",
+                    )
+                nodes = load_all_nodes()
+                j_nodes = [
+                    n
+                    for n in nodes
+                    if str(n.get("source") or "").lower() == "jira" or str(n.get("id") or "").startswith("jira:")
+                ]
+                feeds["sources"]["jira_rest_fallback"] = {"ok": True, "nodes": len(j_nodes)}
+            except Exception as e:
+                feeds["sources"]["jira_rest_fallback"] = {"ok": False, "error": str(e)[:200]}
         gate("jira_has_graph", len(j_nodes) > 0, f"n={len(j_nodes)}")
 
     # ── 4. Confluence public (Apache cwiki) ──────────────────────
@@ -350,7 +389,6 @@ def main() -> int:
             f"nodes={len(c_nodes)} rc={r.get('rc')}",
         )
         if len(c_nodes) == 0:
-            # second path: broader crawl may still land spaces
             r3 = _py_run(
                 [
                     str(_SCRIPTS / "crawl_public.py"),
@@ -372,6 +410,54 @@ def main() -> int:
                 or str(n.get("id") or "").startswith("confluence:")
             ]
             feeds["sources"]["confluence_retry"] = {"ok": r3.get("ok"), "rc": r3.get("rc"), "nodes": len(c_nodes)}
+        if len(c_nodes) == 0:
+            # Hard REST seed from public Apache Confluence content search
+            try:
+                import json as _json
+                import urllib.parse
+                import urllib.request
+
+                from ingest_bus import ingest_node  # type: ignore
+
+                q = urllib.parse.quote("kafka")
+                url = (
+                    "https://cwiki.apache.org/confluence/rest/api/content/search"
+                    f"?cql=text~{q}&limit=8&expand=body.storage"
+                )
+                req = urllib.request.Request(url, headers={"User-Agent": "PrivateBrain-ForceFeed/1.0"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = _json.loads(resp.read().decode("utf-8", errors="replace"))
+                for page in data.get("results") or []:
+                    pid = page.get("id") or "0"
+                    title = str(page.get("title") or f"page-{pid}")
+                    body = ""
+                    try:
+                        body = str(((page.get("body") or {}).get("storage") or {}).get("value") or "")[:4000]
+                    except Exception:
+                        body = ""
+                    ingest_node(
+                        f"confluence:page:cwiki:{pid}",
+                        type="Page",
+                        source="confluence",
+                        title=title,
+                        tier="T2",
+                        uri=f"https://cwiki.apache.org/confluence/pages/viewpage.action?pageId={pid}",
+                        content=body or title,
+                        tags=["confluence", "page", "force-feed", "apache"],
+                        props={"host": "cwiki.apache.org", "page_id": pid},
+                        agent_id="ci_force_feed",
+                        role="confluence-deep",
+                    )
+                nodes = load_all_nodes()
+                c_nodes = [
+                    n
+                    for n in nodes
+                    if str(n.get("source") or "").lower() == "confluence"
+                    or str(n.get("id") or "").startswith("confluence:")
+                ]
+                feeds["sources"]["confluence_rest_fallback"] = {"ok": True, "nodes": len(c_nodes)}
+            except Exception as e:
+                feeds["sources"]["confluence_rest_fallback"] = {"ok": False, "error": str(e)[:200]}
         gate("confluence_has_graph", len(c_nodes) > 0, f"n={len(c_nodes)}")
 
     # ── 5. Graph must have grown; RAG retrieve works ─────────────

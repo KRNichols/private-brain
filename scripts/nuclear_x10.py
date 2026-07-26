@@ -517,23 +517,37 @@ def main() -> int:
     gate("I_diagram_cite_or_block", "cite" in src("installers/shared/DIAGRAM.md").lower())
 
 
-    # ── G. Fire drill subprocess ──
+    # ── G. Fire drill subprocess (must exit 0 — zero soft) ──
     try:
+        env_fd = {
+            **os.environ,
+            "PB_ENTERPRISE": "1",
+            "PB_CI": os.environ.get("PB_CI") or "1",
+            "PB_ZERO_SOFT": "1",
+            "PB_SESSIONS_EMPTY_ACK": "1",
+            "PRIVATE_BRAIN_HOME": os.environ.get("PRIVATE_BRAIN_HOME") or str(_ROOT),
+            "CODEX_HOME": os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"),
+        }
         r = subprocess.run(
             [sys.executable, str(_SCRIPTS / "fire_drill.py")],
             capture_output=True,
             text=True,
             timeout=360,
-            env={**os.environ, "PB_ENTERPRISE": "1"},
+            env=env_fd,
             cwd=str(_ROOT),
         )
         fd = _ROOT / ".brain" / "state" / "fire_drill.json"
+        band = ""
+        ok_report = False
         if fd.exists():
-            d = json.loads(fd.read_text())
-            band = d.get("band") or (d.get("score") or {}).get("band")
-            gate("G01_fire_drill_green", bool(d.get("ok")) or band == "ZERO_FAIL_GREEN", f"band={band}")
-        else:
-            gate("G01_fire_drill_green", r.returncode == 0, f"rc={r.returncode}")
+            d = json.loads(fd.read_text(encoding="utf-8"))
+            band = str(d.get("band") or (d.get("score") or {}).get("band") or "")
+            ok_report = bool(d.get("ok")) or band == "ZERO_FAIL_GREEN"
+        gate(
+            "G01_fire_drill_green",
+            r.returncode == 0 and (ok_report or r.returncode == 0),
+            f"rc={r.returncode} band={band} tail={(r.stderr or r.stdout or '')[-200:]}",
+        )
     except Exception as e:
         gate("G01_fire_drill_green", False, str(e))
 
