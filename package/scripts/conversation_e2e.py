@@ -16,7 +16,8 @@ Scenarios cover:
   C. stop beast mode mid-session → reopen restores beast
   D. GodsEye / Corporate Library / golden conversational surfaces
   E. Multi-turn memory: second question still cites or refuses correctly
-  F. Optional real `codex` CLI if PB_E2E_REAL_CODEX=1
+  F. HARD real `codex` CLI smoke (npm @openai/codex) — soft-skip banned
+     Live agent exec optional via PB_E2E_CODEX_EXEC=1 when auth present
 
 Exit 0 only when hard scenario assertions all pass.
 """
@@ -683,39 +684,21 @@ def main() -> int:
         gate("S7/final_mode_beast", sim.mode() == "beast", sim.mode())
 
         # ────────────────────────────────────────────────────────────
-        # SCENARIO 8 - Optional real Codex CLI
+        # SCENARIO 8 - HARD real Codex CLI (soft-skip banned)
         # ────────────────────────────────────────────────────────────
-        print("\n## S8 - optional real codex CLI")
-        if shutil.which("codex") and os.environ.get("PB_E2E_REAL_CODEX") == "1":
-            r = subprocess.run(
-                ["codex", "--version"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            gate("S8/codex_version", r.returncode == 0, (r.stdout or r.stderr or "")[:80], hard=False)
-            # Non-interactive exec if supported - best effort
-            r2 = subprocess.run(
-                ["codex", "exec", "-q", "reply with the single word PONG only"],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+        print("\n## S8 - HARD real Codex CLI smoke (no soft-skip)")
+        try:
+            sys.path.insert(0, str(SCRIPTS))
+            from codex_cli_smoke import smoke_codex_cli  # type: ignore
+
+            s8 = smoke_codex_cli(gate_fn=gate, prefix="S8", env=env)
             gate(
-                "S8/codex_exec_soft",
-                r2.returncode == 0 or bool(r2.stdout),
-                (r2.stdout or r2.stderr or "")[:120],
-                hard=False,
+                "S8/codex_cli_hard_green",
+                bool(s8.get("ok")),
+                f"binary={s8.get('binary')} version={s8.get('version')}",
             )
-        else:
-            gate(
-                "S8/codex_skipped",
-                True,
-                "SimCodex hooks used (free runners). Set PB_E2E_REAL_CODEX=1 when codex CLI+auth available.",
-                hard=False,
-            )
+        except Exception as e:
+            gate("S8/codex_cli_hard_green", False, f"smoke import/run failed: {e}")
 
         # ────────────────────────────────────────────────────────────
         # Report
@@ -733,10 +716,12 @@ def main() -> int:
                 "multi_turn_grounded": True,
                 "godseye_corporate_library": True,
                 "scripted_play": True,
+                "real_codex_cli_hard": True,
             },
             "notes": (
                 "SimCodex multi-turn: real SessionStart/UserPromptSubmit/Stop hooks + "
-                "orchestrate concert. Fabricated assistant answers prove gate results."
+                "orchestrate concert. Fabricated assistant answers prove gate results. "
+                "S8 hard-smokes real `codex` CLI (npm @openai/codex) — soft-skip banned."
             ),
         }
         STATE_DIR.mkdir(parents=True, exist_ok=True)

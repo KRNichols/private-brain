@@ -112,12 +112,32 @@ jobs:
   conversation-contracts-smoke:
     name: conversation contracts smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Codex CLI (@openai/codex)
+        run: |
+          set -e
+          npm install -g @openai/codex
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          hash -r 2>/dev/null || true
+          command -v codex
+          codex --version
+      - name: Hard Codex CLI smoke
+        env:
+          PB_CI: "1"
+          PB_NO_OPEN_CODEX: "1"
+          PB_E2E_INSTALL_CODEX: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/codex_cli_smoke.py
       - name: Run conversation_e2e
         env:
           PB_ENTERPRISE: "1"
@@ -125,6 +145,7 @@ jobs:
           PB_NONINTERACTIVE: "1"
           PB_NO_OPEN_CODEX: "1"
           PB_GODSEYE: "0"
+          PB_E2E_INSTALL_CODEX: "1"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"

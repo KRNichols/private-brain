@@ -39,6 +39,43 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Real Codex CLI is the product surface — install + hard smoke (soft-skip banned)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Codex CLI (@openai/codex)
+        shell: bash
+        run: |
+          set -e
+          npm install -g @openai/codex
+          command -v codex
+          codex --version
+          # Ensure global npm bin is on PATH for later steps (Windows + Unix)
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          if [ -d "$(npm prefix -g)" ]; then
+            echo "$(npm prefix -g)" >> "$GITHUB_PATH"
+          fi
+          # Windows npm global often under AppData
+          if [ -n "${APPDATA:-}" ] && [ -d "$APPDATA/npm" ]; then
+            echo "$APPDATA/npm" >> "$GITHUB_PATH"
+          fi
+          hash -r 2>/dev/null || true
+          command -v codex
+          codex --version
+
+      - name: Hard Codex CLI smoke (standalone)
+        shell: bash
+        env:
+          PB_CI: "1"
+          PB_NO_OPEN_CODEX: "1"
+          PB_E2E_INSTALL_CODEX: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
+          python scripts/codex_cli_smoke.py
+
       - name: Nuclear Conversation E2E (full system smoke)
         shell: bash
         env:
@@ -49,13 +86,15 @@ jobs:
           PB_GODSEYE: "0"
           PB_NUCLEAR_HEADLESS: "1"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
-          PB_E2E_REAL_CODEX: "0"
+          PB_E2E_INSTALL_CODEX: "1"
+          # Live agent needs auth secrets — CLI hard smoke is mandatory; exec optional
+          PB_E2E_CODEX_EXEC: "0"
         run: |
           set -e
           python -m pip install -U pip >/dev/null
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
-          # Primary: nuclear conversational suite (every surface)
+          # Primary: nuclear conversational suite (every surface + real codex CLI)
           python scripts/rag_dag_e2e.py
           python scripts/nuclear_day1_kingdom_e2e.py
           python scripts/nuclear_conversation_e2e.py
@@ -72,6 +111,8 @@ jobs:
           path: |
             .brain/state/NUCLEAR_CONVERSATION_E2E.json
             .brain/state/CONVERSATION_E2E.json
+            .brain/state/CODEX_CLI_SMOKE.json
             **/NUCLEAR_CONVERSATION_E2E.json
             **/CONVERSATION_E2E.json
+            **/CODEX_CLI_SMOKE.json
           if-no-files-found: warn

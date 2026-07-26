@@ -59,7 +59,7 @@ jobs:
             print("\n".join(errs[:40])); sys.exit(1)
           PY
 
-  # ── 2. Nuclear conversation E2E (product claims) ───────────────
+  # ── 2. Nuclear conversation E2E (product claims + real Codex CLI) ──
   nuclear-convo:
     name: nuclear-convo (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -74,13 +74,41 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Codex CLI (@openai/codex)
+        shell: bash
+        run: |
+          set -e
+          npm install -g @openai/codex
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          echo "$(npm prefix -g)" >> "$GITHUB_PATH"
+          if [ -n "${APPDATA:-}" ] && [ -d "$APPDATA/npm" ]; then
+            echo "$APPDATA/npm" >> "$GITHUB_PATH"
+          fi
+          hash -r 2>/dev/null || true
+          command -v codex
+          codex --version
+      - name: codex_cli_smoke (hard)
+        shell: bash
+        env:
+          PB_E2E_INSTALL_CODEX: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
+          python scripts/codex_cli_smoke.py
       - name: nuclear_conversation_e2e
         shell: bash
+        env:
+          PB_E2E_INSTALL_CODEX: "1"
         run: |
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
           python scripts/nuclear_conversation_e2e.py
       - name: conversation_e2e multi-turn
         shell: bash
+        env:
+          PB_E2E_INSTALL_CODEX: "1"
         run: |
           export PRIVATE_BRAIN_HOME="${GITHUB_WORKSPACE}"
           python scripts/conversation_e2e.py
@@ -91,6 +119,7 @@ jobs:
           path: |
             .brain/state/NUCLEAR_CONVERSATION_E2E.json
             .brain/state/CONVERSATION_E2E.json
+            .brain/state/CODEX_CLI_SMOKE.json
           if-no-files-found: warn
 
   # ── 3. Nuclear x10 + fire drill + brutal (headless) ────────────

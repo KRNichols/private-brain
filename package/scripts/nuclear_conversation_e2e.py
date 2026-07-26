@@ -2,14 +2,15 @@
 """NUCLEAR CONVERSATION E2E - smoke-test every production surface free runners can hit.
 
 Name: nuclear conversational testing
-Mission: system ready-to-go proof without Codex Desktop GUI.
+Mission: system ready-to-go proof — real Codex CLI + sideload hooks on free runners.
 
 Drives the REAL sideload path Codex uses:
   SessionStart → UserPromptSubmit → (SimCodex answer) → Stop
 Plus orchestrate concert, enterprise gates, install hooks, organism, fire_drill,
 capabilities, golden_config, conversation_router, day1, freeze assets, profiles.
+Plus HARD `codex` CLI smoke (npm @openai/codex) — soft-skip of the CLI is banned.
 
-Exit 0 only if hard gates pass (soft allowed for optional GUI/network).
+Exit 0 only if hard gates pass (soft allowed for optional GUI/network only).
 """
 from __future__ import annotations
 
@@ -196,6 +197,7 @@ def main() -> int:
             "conversation_router.py",
             "conversation_e2e.py",
             "nuclear_conversation_e2e.py",
+            "codex_cli_smoke.py",
             "nuclear_x10.py",
             "fire_drill.py",
             "day1_first_start.py",
@@ -788,6 +790,23 @@ def main() -> int:
         gate("N12/final_beast", _mode(brain) == "beast", _mode(brain))
 
         # ══════════════════════════════════════════════════════════
+        # N13 - HARD real Codex CLI smoke (the product surface)
+        # ══════════════════════════════════════════════════════════
+        print("\n## N13 - HARD real Codex CLI (soft-skip banned)")
+        try:
+            sys.path.insert(0, str(SCRIPTS))
+            from codex_cli_smoke import smoke_codex_cli  # type: ignore
+
+            n13 = smoke_codex_cli(gate_fn=gate, prefix="N13", env=env)
+            gate(
+                "N13/codex_cli_hard_green",
+                bool(n13.get("ok")),
+                f"binary={n13.get('binary')} version={n13.get('version')}",
+            )
+        except Exception as e:
+            gate("N13/codex_cli_hard_green", False, f"smoke import/run failed: {e}")
+
+        # ══════════════════════════════════════════════════════════
         # Report
         # ══════════════════════════════════════════════════════════
         report = {
@@ -811,6 +830,7 @@ def main() -> int:
                 "godseye_corporate_library": True,
                 "nested_conversation_e2e": True,
                 "scripted_play": True,
+                "real_codex_cli_hard": True,
             },
         }
         STATE_DIR.mkdir(parents=True, exist_ok=True)
