@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  One-click Private Brain uninstaller (Windows) — reverse Codex sideload.
+  One-click Private Brain uninstaller (Windows) - reverse Codex sideload.
 
 .DESCRIPTION
   Removes Private Brain wiring from %USERPROFILE%\.codex while leaving Codex CLI intact.

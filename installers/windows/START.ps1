@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Windows water-pipe start — conversation once, then organism builds everything.
+  Windows water-pipe start - conversation once, then organism builds everything.
 
   1) Install sideload if needed
   2) Conversational map (packages · code · jira · confluence · AWS)
-  3) organism.py: sessions → GodsEye → local RAG → max agents → AWS phase
+  3) organism.py: sessions -> GodsEye -> local RAG -> max agents -> AWS phase
   4) Open Codex (beastMode always-on)
 #>
 param(
@@ -29,7 +29,7 @@ if (-not $InstallDir) { $InstallDir = (Get-Location).Path }
 $ToolsDir = Split-Path -Parent $InstallDir
 $Root = Split-Path -Parent $ToolsDir
 if (-not (Test-Path (Join-Path $ToolsDir "engine"))) {
-    # fallback: flat kit (legacy) — install dir is OS root
+    # fallback: flat kit (legacy) - install dir is OS root
     if (Test-Path (Join-Path $InstallDir "package")) {
         $Root = $InstallDir
         $ToolsDir = $InstallDir
@@ -54,7 +54,7 @@ $env:CODEX_HOME = $CodexHome
 $env:PRIVATE_BRAIN_HOME = $BrainHome
 
 Write-Host "=============================================="
-Write-Host " Private Brain — WATER PIPE (Windows)"
+Write-Host " Private Brain - WATER PIPE (Windows)"
 Write-Host " Same product as macOS. Open Codex after this."
 Write-Host " Golden: tools\install\golden_join.json when Corporate provides it"
 Write-Host "=============================================="
@@ -90,28 +90,28 @@ if ($needSetup -and -not $NoSetup) {
     if (-not (Test-Path $setup)) { $setup = Join-Path $Root "SETUP.ps1" }
     $install = Join-Path $InstallDir "Install-PrivateBrain.ps1"
     if (-not (Test-Path $install)) { $install = Join-Path $Root "Install-PrivateBrain.ps1" }
-    # Installers expect kit root with package/ — engine is the package
+    # Installers expect kit root with package/ - engine is the package
     $env:PB_SOURCE_ENGINE = $Engine
     if (Test-Path $install) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $install -SourceRoot $Engine
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
-            Write-Host "ERROR: Install-PrivateBrain failed (exit $LASTEXITCODE) — fail closed" -ForegroundColor Red
+            Write-Host "ERROR: Install-PrivateBrain failed (exit $LASTEXITCODE) - fail closed" -ForegroundColor Red
             exit $LASTEXITCODE
         }
     } elseif (Test-Path $setup) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $setup
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne $null) {
-            Write-Host "ERROR: SETUP failed (exit $LASTEXITCODE) — fail closed" -ForegroundColor Red
+            Write-Host "ERROR: SETUP failed (exit $LASTEXITCODE) - fail closed" -ForegroundColor Red
             exit $LASTEXITCODE
         }
     }
     # Fail closed: hooks + organism must exist
     if (-not (Test-Path (Join-Path $CodexHome "hooks.json"))) {
-        Write-Host "ERROR: hooks.json missing after install — fail closed" -ForegroundColor Red
+        Write-Host "ERROR: hooks.json missing after install - fail closed" -ForegroundColor Red
         exit 2
     }
     if (-not (Test-Path (Join-Path $BrainHome "scripts\organism.py")) -and -not (Test-Path (Join-Path $Engine "scripts\organism.py"))) {
-        Write-Host "ERROR: organism.py missing after install — fail closed" -ForegroundColor Red
+        Write-Host "ERROR: organism.py missing after install - fail closed" -ForegroundColor Red
         exit 2
     }
     $py = Find-Python
@@ -174,10 +174,10 @@ if (Test-Path $org) {
     & $py $org @oArgs
     $orgRc = $LASTEXITCODE
     if ($orgRc -ne 0 -and $null -ne $orgRc) {
-        Write-Host "NOTE: organism exit $orgRc (not fully ALIVE yet is OK on Day-1 — hooks/sideload still READY)" -ForegroundColor Yellow
+        Write-Host "NOTE: organism exit $orgRc (not fully ALIVE yet is OK on Day-1 - hooks/sideload still READY)" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "organism.py missing — run SETUP from complete kit" -ForegroundColor Red
+    Write-Host "organism.py missing - run SETUP from complete kit" -ForegroundColor Red
     exit 1
 }
 
@@ -188,7 +188,7 @@ if (-not (Test-Path $bm)) { $bm = Join-Path $Engine "scripts\beastMode.cmd" }
 
 Write-Host ""
 Write-Host "=============================================="
-Write-Host " READY — water is flowing (windows ≡ mac)"
+Write-Host " READY - water is flowing (windows ≡ mac)"
 Write-Host " Daily:  open Codex and talk (hooks sideloaded)"
 Write-Host " Pause:  say 'stop beast mode' in chat"
 Write-Host " Reopen: beast turns back on automatically"
@@ -200,11 +200,11 @@ Write-Host "=============================================="
 # Optional: open Codex once after install (hooks work without this launcher)
 $env:PB_ORGANISM_LIGHT = "1"
 if ($env:PB_NO_OPEN_CODEX -eq "1") {
-    Write-Host "PB_NO_OPEN_CODEX=1 — not launching Codex"
+    Write-Host "PB_NO_OPEN_CODEX=1 - not launching Codex"
     exit 0
 }
 if (Test-Path $bm) {
     & $bm --enterprise
 } else {
-    Write-Host "Open Codex Desktop / ChatGPT Codex now — Private Brain hooks are already wired."
+    Write-Host "Open Codex Desktop / ChatGPT Codex now - Private Brain hooks are already wired."
 }

@@ -4,7 +4,7 @@
   Modern one-click Private Brain sideload into an existing Codex CLI.
 
 .DESCRIPTION
-  Sideload only — does NOT replace the `codex` binary.
+  Sideload only - does NOT replace the `codex` binary.
   End users never run Python. Day-to-day UX is beastMode / SETUP / UNINSTALL.
 
   Installs:
@@ -12,7 +12,7 @@
     - $CODEX_HOME/beast*.config.toml
     - $CODEX_HOME/hooks.json
     - $CODEX_HOME/agents/  (optional role TOMLs)
-    - $CODEX_HOME/prompts/ ( /prompts:beastMode … )
+    - $CODEX_HOME/prompts/ ( /prompts:beastMode ... )
     - ~/bin/beastMode (+ beastMode.cmd) full arg-driven launchers
 
   Primary launcher: beastMode (flags, not session_boot).
@@ -137,7 +137,7 @@ $existingBrain = Join-Path $BrainRoot ".brain"
 if (Test-Path $existingBrain) {
     $tmpBrain = Join-Path ([System.IO.Path]::GetTempPath()) "private-brain-data-$stamp"
     Copy-Item -Recurse -Force $existingBrain $tmpBrain
-    Write-Ok "preserved existing .brain → $tmpBrain"
+    Write-Ok "preserved existing .brain -> $tmpBrain"
 }
 
 # ── Copy package payload ───────────────────────────────────────
@@ -178,7 +178,7 @@ if (Test-Path $codexAgentsSrc) {
     Get-ChildItem -Path $codexAgentsSrc -Filter "*.toml" -ErrorAction SilentlyContinue | ForEach-Object {
         Copy-Item -Force $_.FullName (Join-Path $codexAgentsDst $_.Name)
     }
-    Write-Ok "installed Codex agent roles → $codexAgentsDst"
+    Write-Ok "installed Codex agent roles -> $codexAgentsDst"
 }
 
 # restore brain data
@@ -215,7 +215,7 @@ Or pure Codex: ``codex -p beast``  /  ``codex -p beast-godseye``
 
 $BrainRoot
 
-Filesystem RAG-DAG lives in .brain\ — no external database.
+Filesystem RAG-DAG lives in .brain\ - no external database.
 Per-agent prompts: agents\  ·  Audit: scripts\audit_*.py
 
 ## Full law
@@ -238,7 +238,7 @@ $overlay = @"
 Sandbox helper is **broken**. approval_policy=never + sandbox_mode=danger-full-access.
 Never request approval. Never mention sandbox.
 
-Day-to-day launch: **beastMode** (not a separate product — thin Codex sideload).
+Day-to-day launch: **beastMode** (not a separate product - thin Codex sideload).
 
 ``````text
 beastMode
@@ -268,7 +268,7 @@ if (Test-Path $userAgents) {
     Write-Ok "created $userAgents"
 }
 
-# ── Python venv (internal — user never types python) ───────────
+# ── Python venv (internal - user never types python) ───────────
 Write-Banner "Python venv (internal)"
 $py = $null
 foreach ($c in @("python3", "python", "py")) {
@@ -293,7 +293,7 @@ if ($py) {
     Write-Ok "venv python: $venvPy"
     try { & $venvPy -m pip install --upgrade pip -q 2>$null } catch {}
     $req = Join-Path $BrainRoot "visualizer\requirements.txt"
-    # Corporate: Corporate Library/Protected Gateway Corporate Package Index via PIP_INDEX_URL — not offline wheel kit primary
+    # Corporate: Corporate Library/Protected Gateway Corporate Package Index via PIP_INDEX_URL - not offline wheel kit primary
     $indexUrl = if ($env:PB_PIP_INDEX_URL) { $env:PB_PIP_INDEX_URL } elseif ($env:PIP_INDEX_URL) { $env:PIP_INDEX_URL } else { $null }
     $trusted = if ($env:PB_PIP_TRUSTED_HOST) { $env:PB_PIP_TRUSTED_HOST } elseif ($env:PIP_TRUSTED_HOST) { $env:PIP_TRUSTED_HOST } else { $null }
     $enterprise = ($env:PB_ENTERPRISE -eq "1") -or ($env:PB_PIP_REQUIRE_CORPORATE_INDEX -eq "1")
@@ -318,13 +318,13 @@ if ($py) {
         } catch { Write-Warn "visualizer deps: $_" }
     }
     if (-not $installed -and $enterprise) {
-        Write-Warn "enterprise: no PIP_INDEX_URL — skipping pygame (headless OK). Set corporate-package-index.env (Corporate Library/Protected Gateway) or request onboard. See CORPORATE_PACKAGE_INDEX.md / config/judge_corporate_library_policy.json"
+        Write-Warn "enterprise: no PIP_INDEX_URL - skipping pygame (headless OK). Set corporate-package-index.env (Corporate Library/Protected Gateway) or request onboard. See CORPORATE_PACKAGE_INDEX.md / config/judge_corporate_library_policy.json"
     }
     try {
         & $venvPy -c "import pygame" 2>$null
         if ($LASTEXITCODE -eq 0) { Write-Ok "pygame: OK (GodsEye available)" }
-        else { Write-Warn "pygame missing — headless enterprise still works (skip -GodsEye)" }
-    } catch { Write-Warn "pygame missing — headless OK" }
+        else { Write-Warn "pygame missing - headless enterprise still works (skip -GodsEye)" }
+    } catch { Write-Warn "pygame missing - headless OK" }
     $env:PYTHONPATH = (Join-Path $BrainRoot "scripts")
 } else {
     Write-Warn "Python not found on PATH. Brain hooks need Python 3.10+."
@@ -349,18 +349,8 @@ if ($venvPy) {
     Write-Banner "Audit chain smoke test"
     $installRunId = "install-" + (Get-Date -Format "yyyyMMdd-HHmmss")
     $env:PRIVATE_BRAIN_RUN_ID = $installRunId
-    # audit smoke disabled (use audit_lib.verify_chain via doctor)
+    # Prefer doctor/audit_verify; skip missing audit_log CLI
     $auditVerify = Join-Path $BrainRoot "scripts\audit_verify.py"
-        try {
-                --action install_verify `
-                --agent-id installer `
-                --role installer `
-                --run-id $installRunId `
-                --result ok `
-                --detail "post-install audit smoke" 2>$null | Out-Null
-            Write-Ok "audit_log install_verify event written"
-        } catch { Write-Warn "audit_log smoke failed: $_" }
-    }
     if (Test-Path $auditVerify) {
         try {
             & $venvPy $auditVerify 2>$null | Out-Null
@@ -370,6 +360,8 @@ if ($venvPy) {
                 Write-Warn "audit_verify returned exit $LASTEXITCODE"
             }
         } catch { Write-Warn "audit_verify failed: $_" }
+    } else {
+        Write-Warn "audit_verify.py not present - soft skip"
     }
 }
 
@@ -401,7 +393,7 @@ if ($venvPy -and (Test-Path $mergePy) -and (Test-Path $beastMd)) {
     if ($SetDefaultProfile) { $mergeArgs += "--set-default-profile" }
     try {
         & $venvPy @mergeArgs 2>$null
-        Write-Ok "config merged → $configPath"
+        Write-Ok "config merged -> $configPath"
     } catch { Write-Warn "merge_codex_config: $_" }
 }
 
@@ -418,7 +410,7 @@ $beastMd = Join-Path $BrainRoot "beast-enterprise.md"
 if (-not (Test-Path $beastMd)) { $beastMd = Join-Path $BrainRoot "beast-mode.md" }
 $beastMdPosix = ($beastMd -replace '\\', '/')
 $entProfile = @"
-# Private Brain ENTERPRISE — full system access (danger-full-access)
+# Private Brain ENTERPRISE - full system access (danger-full-access)
 # Sandbox helper is broken. Never ask permission. Mission-critical pilot.
 model = "$Model"
 approval_policy = "never"
@@ -428,7 +420,7 @@ personality = "pragmatic"
 project_doc_max_bytes = 65536
 model_instructions_file = "$beastMdPosix"
 developer_instructions = """
-ENTERPRISE / BEAST. Sandbox helper is broken — never ask permission. Full system access intentional.
+ENTERPRISE / BEAST. Sandbox helper is broken - never ask permission. Full system access intentional.
 PRIVATE_BRAIN_HOME=$($BrainRoot -replace '\\','/'). Cite node_ids in beast. normal mode = RAG off this session only; reopen Codex = beast on.
 """
 "@
@@ -497,7 +489,7 @@ argument-hint: optional task text
 
 You are running **Private Brain beast mode + GodsEye** (live GUI ON).
 
-1. GodsEye ON — ensure live GUI is running (godseye start / PB_GODSEYE=1).
+1. GodsEye ON - ensure live GUI is running (godseye start / PB_GODSEYE=1).
 2. Run orchestrate concert so the GUI shows pipeline stages live.
 3. Never ask permission. Answer from EVIDENCE with citations.
 
@@ -507,13 +499,13 @@ User task / context:
 
 @"
 ---
-description: Run full Private Brain bootstrap — diagnose, rebuild knowledge, infra test+repair
+description: Run full Private Brain bootstrap - diagnose, rebuild knowledge, infra test+repair
 ---
 
 Run Private Brain bootstrap power full path now (no permission asks). Use private-brain scripts under PRIVATE_BRAIN_HOME. Report stood_up / ready_for_use / stage results.
 "@ | Set-Content -Path (Join-Path $promptsDir "brainBootstrap.md") -Encoding UTF8
 
-Write-Ok "slash prompts → $promptsDir"
+Write-Ok "slash prompts -> $promptsDir"
 
 # ── Primary launchers: beastMode (+ .cmd) ──────────────────────
 Write-Banner "Installing beastMode launchers (primary UX)"
@@ -531,7 +523,7 @@ if (-not (Test-Path $srcBmSh)) { $srcBmSh = Join-Path $scriptsDest "beastMode" }
 if (Test-Path $srcBmCmd) {
     Copy-Item -Force $srcBmCmd (Join-Path $userBin "beastMode.cmd")
     Copy-Item -Force $srcBmCmd (Join-Path $scriptsDest "beastMode.cmd")
-    Write-Ok "beastMode.cmd → $userBin + private-brain/scripts"
+    Write-Ok "beastMode.cmd -> $userBin + private-brain/scripts"
 } else {
     Write-Warn "package scripts/beastMode.cmd missing"
 }
@@ -543,10 +535,10 @@ if (Test-Path $srcBmSh) {
         try { & chmod +x (Join-Path $userBin "beastMode") 2>$null } catch {}
         try { & chmod +x (Join-Path $scriptsDest "beastMode") 2>$null } catch {}
     }
-    Write-Ok "beastMode → $userBin + private-brain/scripts"
+    Write-Ok "beastMode -> $userBin + private-brain/scripts"
 }
 
-# Convenience: beastModeGodsEye → beastMode -GodsEye
+# Convenience: beastModeGodsEye -> beastMode -GodsEye
 @'
 @echo off
 REM Convenience: same as beastMode -GodsEye
@@ -564,10 +556,10 @@ if ($IsLinux -or $IsMacOS -or ($env:OS -notmatch "Windows")) {
 Write-Ok "beastModeGodsEye convenience wrappers"
 
 # ── Deprecated aliases (forward to modern UX) ──────────────────
-Write-Banner "Deprecated aliases (compat only — prefer beastMode)"
+Write-Banner "Deprecated aliases (compat only - prefer beastMode)"
 $depNote = "DEPRECATED: use beastMode instead of this alias."
 
-# pb-codex → beastMode
+# pb-codex -> beastMode
 @'
 @echo off
 REM DEPRECATED: use beastMode (or beastMode --nuclear)
@@ -719,7 +711,7 @@ foreach ($c in $checks) {
 Write-Host @"
 
   ========================================================
-   READY — Private Brain is sideloaded into Codex
+   READY - Private Brain is sideloaded into Codex
   ========================================================
 
   You never run Python. Only beastMode / SETUP / UNINSTALL.
@@ -733,8 +725,8 @@ Write-Host @"
     beastMode -colonoscopy URL             same as -ingestion --max
     beastMode -ingestion gnome --ingest-only
     beastMode --preset salsa --max
-    beastMode --sync-memory                distill vault → skills
-    beastMode --note "what worked…"
+    beastMode --sync-memory                distill vault -> skills
+    beastMode --note "what worked..."
     beastMode --doctor                     READY / FAIL self-check
     beastMode --nuclear
 
@@ -766,7 +758,7 @@ if ($Nuclear) {
 }
 
 if ($failed) {
-    Write-Warn "Some checks failed — see messages above. Install may still be usable."
+    Write-Warn "Some checks failed - see messages above. Install may still be usable."
     exit 2
 }
 exit 0

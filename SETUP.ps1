@@ -7,7 +7,7 @@
   End users never run Python. Only beastMode / SETUP / UNINSTALL.
 
   Thin wrapper around Install-PrivateBrain.ps1 (modern sideload).
-  Primary UX after install: beastMode [flags] — not session_boot / pb-codex.
+  Primary UX after install: beastMode [flags] - not session_boot / pb-codex.
 #>
 
 $ErrorActionPreference = "Stop"
