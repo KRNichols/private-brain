@@ -121,23 +121,47 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install Codex CLI (@openai/codex)
+      - name: Install Codex CLI — loop until present
         run: |
           set -e
-          npm install -g @openai/codex
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
-          hash -r 2>/dev/null || true
+          ok=0
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "=== install loop $i/8 ==="
+            npm install -g @openai/codex@latest || npm install -g @openai/codex || true
+            hash -r 2>/dev/null || true
+            export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+            if command -v codex >/dev/null 2>&1; then
+              codex --version
+              ok=1
+              break
+            fi
+            sleep $((i * 2))
+          done
+          test "$ok" = "1"
           command -v codex
           codex --version
-      - name: Hard Codex CLI smoke
+      - name: Hard Codex CLI smoke — loop until perfect
         env:
           PB_CI: "1"
           PB_NO_OPEN_CODEX: "1"
           PB_E2E_INSTALL_CODEX: "1"
+          PB_E2E_CODEX_ATTEMPTS: "8"
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
         run: |
+          set -e
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
-          python scripts/codex_cli_smoke.py
+          for i in 1 2 3 4 5; do
+            echo "=== smoke perfect loop $i/5 ==="
+            if python scripts/codex_cli_smoke.py; then
+              exit 0
+            fi
+            npm install -g @openai/codex@latest || true
+            sleep $((i * 2))
+          done
+          exit 1
       - name: Run conversation_e2e
         env:
           PB_ENTERPRISE: "1"
@@ -146,6 +170,7 @@ jobs:
           PB_NO_OPEN_CODEX: "1"
           PB_GODSEYE: "0"
           PB_E2E_INSTALL_CODEX: "1"
+          PB_E2E_CODEX_ATTEMPTS: "8"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"

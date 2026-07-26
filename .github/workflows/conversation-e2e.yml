@@ -44,37 +44,72 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Codex CLI (@openai/codex)
+      - name: Install Codex CLI — loop until present
         shell: bash
         run: |
           set -e
-          npm install -g @openai/codex
-          command -v codex
-          codex --version
-          # Ensure global npm bin is on PATH for later steps (Windows + Unix)
+          # Heal PATH for global npm bins (Unix + Windows runners)
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+          if [ -n "${APPDATA:-}" ] && [ -d "${APPDATA}/npm" ]; then
+            export PATH="${APPDATA}/npm:${PATH}"
+          fi
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
-          if [ -d "$(npm prefix -g)" ]; then
-            echo "$(npm prefix -g)" >> "$GITHUB_PATH"
+          echo "$(npm prefix -g)" >> "$GITHUB_PATH"
+          if [ -n "${APPDATA:-}" ] && [ -d "${APPDATA}/npm" ]; then
+            echo "${APPDATA}/npm" >> "$GITHUB_PATH"
           fi
-          # Windows npm global often under AppData
-          if [ -n "${APPDATA:-}" ] && [ -d "$APPDATA/npm" ]; then
-            echo "$APPDATA/npm" >> "$GITHUB_PATH"
+          ok=0
+          for i in 1 2 3 4 5 6 7 8; do
+            echo "=== install loop $i/8 ==="
+            npm install -g @openai/codex@latest || npm install -g @openai/codex || true
+            hash -r 2>/dev/null || true
+            export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+            if command -v codex >/dev/null 2>&1; then
+              codex --version
+              codex --help >/dev/null
+              codex exec --help >/dev/null
+              echo "CODEX PRESENT on attempt $i"
+              ok=1
+              break
+            fi
+            echo "codex missing — retry install"
+            sleep $((i * 2))
+          done
+          if [ "$ok" != "1" ]; then
+            echo "FATAL: codex still missing after install loop"
+            exit 1
           fi
-          hash -r 2>/dev/null || true
           command -v codex
           codex --version
 
-      - name: Hard Codex CLI smoke (standalone)
+      - name: Hard Codex CLI smoke — loop until perfect
         shell: bash
         env:
           PB_CI: "1"
           PB_NO_OPEN_CODEX: "1"
           PB_E2E_INSTALL_CODEX: "1"
+          PB_E2E_CODEX_ATTEMPTS: "8"
           PRIVATE_BRAIN_HOME: ${{ github.workspace }}
         run: |
           set -e
+          export PATH="$(npm prefix -g)/bin:$(npm prefix -g):${PATH}"
+          if [ -n "${APPDATA:-}" ] && [ -d "${APPDATA}/npm" ]; then
+            export PATH="${APPDATA}/npm:${PATH}"
+          fi
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}:${PYTHONPATH:-}"
-          python scripts/codex_cli_smoke.py
+          # Outer shell loop: never accept a one-shot fail if install can heal
+          for i in 1 2 3 4 5; do
+            echo "=== smoke perfect loop $i/5 ==="
+            if python scripts/codex_cli_smoke.py; then
+              echo "SMOKE PERFECT"
+              exit 0
+            fi
+            echo "smoke not perfect — reinstall + retry"
+            npm install -g @openai/codex@latest || true
+            sleep $((i * 2))
+          done
+          echo "FATAL: codex smoke never perfect"
+          exit 1
 
       - name: Nuclear Conversation E2E (full system smoke)
         shell: bash
@@ -87,6 +122,7 @@ jobs:
           PB_NUCLEAR_HEADLESS: "1"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
           PB_E2E_INSTALL_CODEX: "1"
+          PB_E2E_CODEX_ATTEMPTS: "8"
           # Live agent needs auth secrets — CLI hard smoke is mandatory; exec optional
           PB_E2E_CODEX_EXEC: "0"
         run: |
