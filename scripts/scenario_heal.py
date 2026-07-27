@@ -290,6 +290,31 @@ def _register_agent(role: str, scope: dict[str, Any], scenario_id: str) -> str:
 def open_gaps() -> list[dict[str, Any]]:
     """Probe all surfaces; return list of open gaps needing ask/synthesize."""
     gaps: list[dict[str, Any]] = []
+    # AppGate / corporate reachability (soft — needs tunnel on laptop)
+    try:
+        from corporate_infra_probe import run_probe
+
+        infra = run_probe()
+        for s in infra.get("likely_appgate_blocked") or []:
+            gaps.append(
+                {
+                    "id": f"appgate_{s}",
+                    "surface": "appgate_network",
+                    "severity": "high",
+                    "healed": {"probe": infra.get("surfaces", {}).get(s, {})},
+                    "ask": [
+                        f"Host for {s} is configured but unreachable — is AppGate/ZTNA connected?",
+                        "If yes and still down: is the URL wrong? Correct base URL?",
+                    ],
+                    "agent_role": "synthesizer",
+                }
+            )
+        for s in infra.get("missing_host_surfaces") or []:
+            # also covered below; mark medium so synthesizer can batch
+            pass
+    except Exception:
+        pass
+
     hosts = heal_ingest_hosts()
     if not hosts.get("gitlab"):
         gaps.append(

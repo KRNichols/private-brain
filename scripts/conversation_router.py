@@ -293,22 +293,59 @@ def route(prompt: str) -> dict[str, Any] | None:
             "synthesize scenario",
             "open gaps",
             "heal and ask",
+            "appgate",
+            "app gate",
+            "probe corporate",
+            "probe infrastructure",
+            "infra probe",
+            "network probe",
+            "can we reach gitlab",
+            "ztna",
         )
     ):
         try:
             from scenario_heal import conversation_inject, synthesize_all
 
+            # Corporate/AppGate probe first when user asks about reachability / hosts
+            infra_txt = ""
+            try:
+                from corporate_infra_probe import run_probe
+
+                infra = run_probe()
+                st = Path(os.environ.get("PRIVATE_BRAIN_HOME") or _ROOT) / ".brain" / "state"
+                st.mkdir(parents=True, exist_ok=True)
+                (st / "corporate_infra_probe.json").write_text(
+                    json.dumps(infra, indent=2), encoding="utf-8"
+                )
+                infra_txt = (
+                    "\n\n=== CORPORATE INFRA PROBE ===\n"
+                    + json.dumps(
+                        {
+                            "critical_reachable": infra.get("critical_reachable"),
+                            "missing_host_surfaces": infra.get("missing_host_surfaces"),
+                            "likely_appgate_blocked": infra.get("likely_appgate_blocked"),
+                            "advice": infra.get("advice"),
+                            "docs_that_answer_this": infra.get("docs_that_answer_this"),
+                        },
+                        indent=2,
+                    )
+                )
+            except Exception as ie:
+                infra_txt = f"\n\n(infra probe soft-fail: {ie})"
+
             doc = synthesize_all(reason="conversational_gap_scan")
             inj = conversation_inject()
             return {
                 "matched": True,
-                "title": "PILOT SCENARIOS · heal → ask-once → synthesize (≤64)",
+                "title": "PILOT SCENARIOS · AppGate/infra probe · heal → ask → synthesize (≤64)",
                 "context": (
-                    f"{inj}\n\ngap_count={doc.get('gap_count')} agents={len(doc.get('agents_spawned') or [])}\n"
-                    "If human pasted a URL/token policy answer in this message, extract and persist to "
-                    "day1_map/golden/env — never invent. Re-run ingest after hosts known."
+                    f"{inj}{infra_txt}\n\ngap_count={doc.get('gap_count')} "
+                    f"agents={len(doc.get('agents_spawned') or [])}\n"
+                    "Harmony: AppGate up → probe internal hosts → crawl. "
+                    "If likely_appgate_blocked: tell human to connect AppGate, do not use public gitlab.com. "
+                    "If missing hosts: ask once using golden_join fields. Never invent."
                 )[:16000],
-                "system": "Pilot scenarios: heal from state; ASK once for open gaps; synthesizer agents ≤64",
+                "system": "Infra probe + pilot scenarios; AppGate then internal crawl",
             }
         except Exception as e:
             # fallback ingest-only path

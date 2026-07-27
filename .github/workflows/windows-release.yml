@@ -18,6 +18,10 @@ concurrency:
   group: windows-release-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   windows-release-mvp:
     name: Windows box · Codex 0.144.3 · Private Brain · FULL E2E
@@ -249,21 +253,22 @@ jobs:
 
       - name: GitHub Release (windows-ready)
         if: success() && github.ref == 'refs/heads/main'
-        permissions:
-          contents: write
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          TAG="windows-ready-${GITHUB_SHA::7}"
-          # idempotent: delete tag release if exists
+          SHORT="${GITHUB_SHA:0:7}"
+          TAG="windows-ready-${SHORT}"
+          # idempotent: delete prior release with same tag if re-run
           gh release delete "$TAG" -y 2>/dev/null || true
           git tag -f "$TAG" "$GITHUB_SHA" 2>/dev/null || true
-          git push -f origin "$TAG" 2>/dev/null || true
+          git push -f origin "refs/tags/$TAG" 2>/dev/null || true
           gh release create "$TAG" \
             dist/PrivateBrain-WINDOWS-READY.zip \
             dist/PrivateBrain-WINDOWS-READY.sha256 \
-            --title "Windows READY ${GITHUB_SHA::7}" \
-            --notes "Windows Release MVP green. Codex pin 0.144.3. Max agents 64. Ingest: PB_ALLOW_PUBLIC_INGEST for CI public OSS; pilot heal→ask→synthesize for internal hosts. SHA: ${GITHUB_SHA}"
+            --title "Windows READY ${SHORT}" \
+            --notes "Windows Release MVP green. Codex pin 0.144.3. Max agents 64. Public OSS only with PB_ALLOW_PUBLIC_INGEST. Pilot uses heal→ask→synthesize for AppGate-internal hosts. SHA: ${GITHUB_SHA}"
           echo "Released $TAG"
 
       - name: READY banner
