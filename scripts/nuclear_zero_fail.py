@@ -68,7 +68,7 @@ def main() -> int:
         gate("live_profile_danger", "danger-full-access" in pt, str(prof))
         gate("live_profile_approval_never", "approval_policy" in pt and "never" in pt)
     else:
-        gate("live_profile_danger", False, "beast-enterprise.config.toml missing — install will create", hard=False)
+        gate("live_profile_danger", False, "beast-enterprise.config.toml missing — install will create")
 
     # ── 2. Self-* organism ──
     for name, path in [

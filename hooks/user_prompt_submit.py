@@ -289,22 +289,37 @@ def main() -> int:
             "launch godseye",
         )
     ):
+        # Codex 0.144.x Windows: NEVER Popen/GUI from UserPromptSubmit (hook timeout / hung child).
+        # Enable flags + instruct agent/shell to launch via beastMode -GodsEye or godseye.py start.
         try:
-            import godseye as ge
-
-            ge.clear_dismissed()
-            ge.set_enabled(True)
+            STATE.mkdir(parents=True, exist_ok=True)
+            (STATE / "godseye.on").write_text("1\n", encoding="utf-8")
             os.environ["PB_GODSEYE"] = "1"
             os.environ["PB_GODSEYE_FORCE"] = "1"
-            out = ge.ensure_gui(force=True)
+            try:
+                import godseye as ge
+
+                ge.clear_dismissed()
+                ge.set_enabled(True)
+            except Exception:
+                pass
+            msg = (
+                "GodsEye REQUESTED (flags set: godseye.on, PB_GODSEYE=1). "
+                "Do NOT spawn GUI from this hook. "
+                "Launch out-of-band: beastMode -GodsEye  OR  "
+                f"`{SCRIPTS / 'godseye.py'} start`  OR  session_boot with PB_GODSEYE=1. "
+                "Prefer NVIDIA discrete GPU when present (RTX); Intel Arc is display fallback. "
+                "Headless/CI: stay PB_GODSEYE=0 — graph truth still works in chat."
+            )
             sys.stdout.write(
                 json.dumps(
                     {
                         "continue": True,
                         "hookSpecificOutput": {
                             "hookEventName": "UserPromptSubmit",
-                            "additionalContext": f"GodsEye reopen: {out}",
+                            "additionalContext": msg,
                         },
+                        "systemMessage": "GodsEye: flags on — launch via beastMode -GodsEye (no hook Popen)",
                     }
                 )
             )
@@ -316,7 +331,7 @@ def main() -> int:
                         "continue": True,
                         "hookSpecificOutput": {
                             "hookEventName": "UserPromptSubmit",
-                            "additionalContext": f"GodsEye failed: {e}",
+                            "additionalContext": f"GodsEye flag-only path failed: {e}",
                         },
                     }
                 )

@@ -1,17 +1,9 @@
 # Publish Mac + Windows READY zips to GitHub Releases (the install path).
 name: Release READY kits
+# DISABLED auto triggers — use Windows Release MVP only.
+# Manual: workflow_dispatch only.
 
 on:
-  push:
-    branches: [main, master]
-    tags: ["v*"]
-    paths:
-      - "scripts/**"
-      - "package/**"
-      - "installers/**"
-      - "hooks/**"
-      - "visualizer/**"
-      - ".github/workflows/release-ready.yml"
   workflow_dispatch:
 
 permissions:

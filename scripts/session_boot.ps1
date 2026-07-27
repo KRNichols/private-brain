@@ -74,12 +74,14 @@ Set-Content -Path $sessionPath -Value $sessionObj -Encoding UTF8
 & $Py (Join-Path $Scripts "brain_status.py") 2>&1 | Out-Host
 
 # 4. Audit session_start (hash-chained append-only log via audit_lib)
+# PowerShell here-string closer @" MUST be alone on its line — never "@ 2>&1
 $env:PYTHONPATH = $Scripts
 try {
-    & $Py -c @"
+    $auditCode = @"
 from audit_lib import audit
 audit('session_start', agent_id='orchestrator-$RunId', role='orchestrator', run_id='$RunId', result='ok', detail='session_boot root=$BrainRoot')
-"@ 2>&1 | Out-Host
+"@
+    & $Py -c $auditCode 2>&1 | Out-Host
 } catch {
     Write-Host "audit_lib session_start failed: $_" -ForegroundColor Yellow
 }

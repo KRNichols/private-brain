@@ -1,16 +1,11 @@
 # NUCLEAR WINTER — unleash the full test battery on free GitHub runners.
 # Parallel matrix across OS × suite. Fail-fast off so we see every red.
 name: Nuclear Winter
+# DISABLED auto triggers — use Windows Release MVP only.
+# Manual: workflow_dispatch only.
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
-  schedule:
-    # nightly nuke (UTC)
-    - cron: "17 6 * * *"
 
 concurrency:
   group: nuclear-winter-${{ github.ref }}

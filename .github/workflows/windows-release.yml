@@ -1,0 +1,221 @@
+# =============================================================================
+# THE ONE PIPELINE — Windows Release MVP (laptop-like)
+# All other workflows are workflow_dispatch-only. This is the release gate.
+# Pins Codex CLI 0.144.3 · max agents 64 · gitlab inter-repo wait cap 15s
+# =============================================================================
+name: Windows Release MVP
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"   # daily release confidence
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-release-mvp:
+    name: Windows box · Codex 0.144.3 · Private Brain · FULL E2E
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      PB_ENTERPRISE: "1"
+      PB_CI: "1"
+      PB_ZERO_SOFT: "1"
+      PB_NONINTERACTIVE: "1"
+      PB_NO_OPEN_CODEX: "1"
+      PB_GODSEYE: "0"
+      PB_NUCLEAR_HEADLESS: "1"
+      PB_FORCE_FEED_TINY: "1"
+      PB_MAX_AGENTS: "64"
+      PB_SWARM_AGENTS: "64"
+      PB_SWARM_SMOKE_AGENTS: "8"
+      PB_GITLAB_INTER_REPO_SEC: "0"
+      PB_CODEX_VERSION: "0.144.3"
+      PB_E2E_CODEX_VERSION: "0.144.3"
+      PB_E2E_INSTALL_CODEX: "1"
+      PB_E2E_CODEX_ATTEMPTS: "8"
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYGAME_HIDE_SUPPORT_PROMPT: "1"
+      # Laptop-like layout under runner USERPROFILE
+      CODEX_HOME: ${{ github.workspace }}\.codex-home
+      PRIVATE_BRAIN_HOME: ${{ github.workspace }}\.codex-home\private-brain
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12 (laptop golden)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build Windows box layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $codex = $env:CODEX_HOME
+          $brain = $env:PRIVATE_BRAIN_HOME
+          New-Item -ItemType Directory -Force -Path $codex | Out-Null
+          New-Item -ItemType Directory -Force -Path $brain | Out-Null
+          New-Item -ItemType Directory -Force -Path "$brain\.brain\state" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$brain\.brain\logs" | Out-Null
+          # Sideload engine into private-brain (START.ps1 shape)
+          foreach ($rel in @("scripts","hooks","config","agents","private_brain","visualizer","package","loop_graph_harness")) {
+            if (Test-Path $rel) {
+              Copy-Item -Recurse -Force $rel (Join-Path $brain $rel)
+            }
+          }
+          foreach ($f in @("Install-PrivateBrain.ps1","SETUP.ps1","beast-mode.md","AGENTS.md","README.md")) {
+            if (Test-Path $f) { Copy-Item -Force $f (Join-Path $brain $f) }
+          }
+          # Create venv under brain (Windows Scripts layout)
+          python -m venv "$brain\venv"
+          & "$brain\venv\Scripts\python.exe" -m pip install -U pip
+          if (Test-Path "visualizer\requirements.txt") {
+            & "$brain\venv\Scripts\python.exe" -m pip install -r visualizer\requirements.txt
+          }
+          # Core test deps
+          & "$brain\venv\Scripts\python.exe" -m pip install pyyaml coverage
+          Write-Host "BOX READY codex=$codex brain=$brain"
+          Write-Host "PY=$(& "$brain\venv\Scripts\python.exe" -c 'import sys; print(sys.version)')"
+
+      - name: Setup Codex CLI 0.144.3 (PIN — no latest)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          npm install -g "@openai/codex@$env:PB_CODEX_VERSION"
+          $npmBin = Join-Path (npm prefix -g) ""
+          echo $npmBin | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+          $env:Path = "$npmBin;$env:Path"
+          if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
+            # Windows npm global
+            $app = Join-Path $env:APPDATA "npm"
+            echo $app | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+            $env:Path = "$app;$env:Path"
+          }
+          codex --version
+          $ver = (codex --version 2>&1 | Out-String)
+          if ($ver -notmatch "0\.144\.3") {
+            Write-Warning "Expected 0.144.3, got: $ver — retry pin"
+            npm install -g "@openai/codex@0.144.3" --force
+            codex --version
+          }
+
+      - name: Install hooks + beast profiles
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
+          $env:PYTHONPATH = "$(Join-Path $env:PRIVATE_BRAIN_HOME 'scripts');$($env:PRIVATE_BRAIN_HOME)"
+          & $py (Join-Path $env:PRIVATE_BRAIN_HOME "scripts\install_hooks.py")
+          if ($LASTEXITCODE -ne 0) { throw "install_hooks failed" }
+          $hj = Join-Path $env:CODEX_HOME "hooks.json"
+          if (-not (Test-Path $hj)) { throw "hooks.json missing" }
+          $raw = Get-Content -Raw $hj
+          if ($raw -notmatch "commandWindows|stop_validate") { throw "hooks incomplete" }
+          # beast profiles
+          @"
+          model = "gpt-5.1"
+          approval_policy = "never"
+          sandbox_mode = "danger-full-access"
+          model_reasoning_effort = "high"
+          "@ | Set-Content (Join-Path $env:CODEX_HOME "beast.config.toml") -Encoding utf8
+          Copy-Item -Force (Join-Path $env:CODEX_HOME "beast.config.toml") (Join-Path $env:CODEX_HOME "beast-enterprise.config.toml")
+          @"
+          [features]
+          hooks = true
+          "@ | Set-Content (Join-Path $env:CODEX_HOME "config.toml") -Encoding utf8
+          Write-Host "hooks + beast profiles OK"
+
+      - name: Init RAG-DAG + beast flags
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
+          $env:PYTHONPATH = "$(Join-Path $env:PRIVATE_BRAIN_HOME 'scripts');$($env:PRIVATE_BRAIN_HOME)"
+          & $py (Join-Path $env:PRIVATE_BRAIN_HOME "scripts\brain_init.py")
+          & $py (Join-Path $env:PRIVATE_BRAIN_HOME "scripts\brain_snapshot.py")
+          & $py -c "from orchestrate import dag_boot; import json; print(json.dumps(dag_boot(), default=str)[:1500])"
+          if ($LASTEXITCODE -ne 0) { throw "dag_boot failed" }
+          $st = Join-Path $env:PRIVATE_BRAIN_HOME ".brain\state"
+          New-Item -ItemType Directory -Force -Path $st | Out-Null
+          Set-Content (Join-Path $st "enterprise.on") "1"
+          Set-Content (Join-Path $st "beastmode.on") "1"
+          '{"mode":"beast"}' | Set-Content (Join-Path $st "conversation_mode.json") -Encoding utf8
+          & $py (Join-Path $env:PRIVATE_BRAIN_HOME "scripts\golden_config.py")
+          Write-Host "RAG-DAG + beast ready"
+
+      - name: Codex CLI smoke + beast profile presence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
+          $env:PYTHONPATH = "$(Join-Path $env:PRIVATE_BRAIN_HOME 'scripts');$($env:PRIVATE_BRAIN_HOME)"
+          & $py (Join-Path $env:PRIVATE_BRAIN_HOME "scripts\codex_cli_smoke.py")
+          if ($LASTEXITCODE -ne 0) { throw "codex smoke failed" }
+          $p = Join-Path $env:CODEX_HOME "beast-enterprise.config.toml"
+          $t = Get-Content -Raw $p
+          if ($t -notmatch "danger-full-access") { throw "beast profile missing danger-full-access" }
+          if ($t -notmatch "never") { throw "beast profile missing approval never" }
+          Write-Host "codex + beast profile OK"
+
+      - name: WINDOWS RELEASE MVP (full hard chain)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
+          $env:PYTHONPATH = "$(Join-Path $env:GITHUB_WORKSPACE 'scripts');$(Join-Path $env:PRIVATE_BRAIN_HOME 'scripts');$($env:PRIVATE_BRAIN_HOME);$($env:GITHUB_WORKSPACE)"
+          # Prefer workspace scripts (latest) for MVP runner
+          & $py (Join-Path $env:GITHUB_WORKSPACE "scripts\windows_release_mvp.py")
+          if ($LASTEXITCODE -ne 0) { throw "WINDOWS RELEASE MVP FAILED" }
+
+      - name: Package coverage judge
+        shell: pwsh
+        env:
+          PB_COVERAGE_MIN: "15"
+          PB_COVERAGE_FULL: "1"
+          PB_GITLAB_CRAWL: "0"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
+          $env:PYTHONPATH = "$(Join-Path $env:GITHUB_WORKSPACE 'scripts');$($env:GITHUB_WORKSPACE)"
+          & $py -m pip install -q coverage
+          & $py (Join-Path $env:GITHUB_WORKSPACE "scripts\judge_package_coverage.py")
+          if ($LASTEXITCODE -ne 0) { throw "coverage judge failed" }
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-mvp-${{ github.sha }}
+          path: |
+            e2e-reports/**
+            .codex-home/hooks.json
+            .codex-home/private-brain/.brain/state/**
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      - name: READY banner
+        if: success()
+        shell: pwsh
+        run: |
+          Write-Host "============================================"
+          Write-Host " WINDOWS RELEASE MVP READY"
+          Write-Host " Codex pin: 0.144.3"
+          Write-Host " Max agents: 64"
+          Write-Host " GitLab inter-repo wait cap: 15s"
+          Write-Host "============================================"

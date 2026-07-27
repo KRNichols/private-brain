@@ -1,13 +1,11 @@
 # Dual-OS matrix: Ubuntu + Windows + macOS in one workflow
 # Use for release confidence / nightly
 name: Dual-OS matrix
+# DISABLED auto triggers — use Windows Release MVP only.
+# Manual: workflow_dispatch only.
 
 on:
-  schedule:
-    - cron: "0 8 * * *"   # daily ~08:00 UTC
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 jobs:
   matrix:

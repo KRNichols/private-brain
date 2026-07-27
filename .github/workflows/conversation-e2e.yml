@@ -1,22 +1,10 @@
 # NUCLEAR conversational E2E on free GitHub-hosted runners (ubuntu + windows + macos).
 # Smoke-tests every production surface free runners can hit — ready-to-go proof.
 name: Nuclear Conversation E2E
+# DISABLED auto triggers — use Windows Release MVP only.
+# Manual: workflow_dispatch only.
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - "scripts/**"
-      - "hooks/**"
-      - "package/scripts/**"
-      - "private_brain/**"
-      - "config/**"
-      - "installers/**"
-      - "visualizer/**"
-      - ".github/workflows/conversation-e2e.yml"
-      - ".github/workflows/ci.yml"
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
 
 concurrency:

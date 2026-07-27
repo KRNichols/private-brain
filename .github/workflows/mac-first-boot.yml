@@ -1,17 +1,9 @@
 # Prove macOS kit extract → START path (parity with Windows)
 name: Mac first-boot
+# DISABLED auto triggers — use Windows Release MVP only.
+# Manual: workflow_dispatch only.
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - "scripts/**"
-      - "installers/**"
-      - "package/**"
-      - "hooks/**"
-      - ".github/workflows/mac-first-boot.yml"
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
 
 jobs:

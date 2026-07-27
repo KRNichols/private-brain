@@ -61,11 +61,12 @@ def _log(msg: str, quiet: bool) -> None:
 
 
 def max_agents() -> int:
-    """Money unconstrained; cap by CPU/memory safety. Default floor 32, ceiling 256."""
+    """Money unconstrained; cap by CPU/memory safety. Default floor 32, ceiling 64 (MVP law)."""
     env = os.environ.get("PB_MAX_AGENTS") or os.environ.get("PB_SWARM_AGENTS") or ""
     if env.strip() and env.strip() not in ("0", "auto"):
         try:
-            return max(1, min(256, int(env)))
+            # MVP law: hard ceiling 64 agents
+            return max(1, min(64, int(env)))
         except ValueError:
             pass
     try:
@@ -74,9 +75,8 @@ def max_agents() -> int:
         n = int(_os.cpu_count() or 8)
     except Exception:
         n = 8
-    # Interactive-safe: stress showed N=32 ~8min on 27k nodes; default floor 16, soft cap 32
-    # Offline/organism force can set PB_MAX_AGENTS higher (up to 256).
-    return max(16, min(32, n * 4))
+    # Default: floor 16, soft cap 64 (Windows dual-GPU / multi-core pilot)
+    return max(16, min(64, n * 4))
 
 
 def map_complete() -> bool:

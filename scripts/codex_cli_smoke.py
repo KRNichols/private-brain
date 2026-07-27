@@ -193,16 +193,20 @@ def _try_install(env: dict[str, str], attempt: int) -> tuple[bool, str, dict[str
     if not npm and not npx:
         return False, "npm/npx missing — setup-node required before smoke", env
 
+    # Pin: laptop golden runs Codex 0.144.3 — never silently jump to @latest
+    pin = (os.environ.get("PB_CODEX_VERSION") or os.environ.get("PB_E2E_CODEX_VERSION") or "0.144.3").strip()
     cmds: list[list[str]] = []
     if npm:
         # prefer clean reinstall on retry loops
         if attempt >= 2:
             cmds.append([npm, "uninstall", "-g", "@openai/codex"])
-        cmds.append([npm, "install", "-g", "@openai/codex@latest"])
-        cmds.append([npm, "install", "-g", "@openai/codex"])
+        cmds.append([npm, "install", "-g", f"@openai/codex@{pin}"])
+        # fallback only if pin fails on next loop attempt
+        if attempt >= 3:
+            cmds.append([npm, "install", "-g", f"@openai/codex@{pin}"])
     if npx:
         # npx can pull the package; does not always put global bin — still try
-        cmds.append([npx, "--yes", "@openai/codex", "--version"])
+        cmds.append([npx, "--yes", f"@openai/codex@{pin}", "--version"])
 
     last = "no install command ran"
     ok_any = False

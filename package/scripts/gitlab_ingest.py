@@ -118,8 +118,14 @@ class GitLabClient:
     def _throttle(self) -> None:
         now = time.time()
         wait = self.min_interval - (now - self._last)
+        # MVP law: never wait more than PB_GITLAB_INTER_REPO_SEC (default 15s)
+        try:
+            cap = float(os.environ.get("PB_GITLAB_INTER_REPO_SEC") or "15")
+        except ValueError:
+            cap = 15.0
+        cap = max(0.05, min(15.0, cap))
         if wait > 0:
-            time.sleep(wait)
+            time.sleep(min(wait, cap))
         self._last = time.time()
 
     def get(self, path: str, params: dict | None = None, timeout: int = 45) -> Any:
@@ -307,6 +313,14 @@ class GitLabIngestor:
             per_page=50,
         )
 
+        # Inter-repo wait between projects. Default 0 (API min_interval already polite).
+        # Hard ceiling 15s per MVP law: never wait more than 15s between gitlab repos.
+        try:
+            inter_repo = float(os.environ.get("PB_GITLAB_INTER_REPO_SEC") or "0")
+        except ValueError:
+            inter_repo = 0.0
+        inter_repo = max(0.0, min(15.0, inter_repo))
+
         if self.workers > 1 and len(projects) > 1:
             with ThreadPoolExecutor(max_workers=self.workers) as ex:
                 futs = [ex.submit(self._ingest_project, p, root_id) for p in projects]
@@ -324,7 +338,9 @@ class GitLabIngestor:
                             detail=str(e)[:240],
                         )
         else:
-            for p in projects:
+            for i, p in enumerate(projects):
+                if i > 0 and inter_repo > 0:
+                    time.sleep(inter_repo)
                 try:
                     self._ingest_project(p, root_id)
                 except Exception as e:
@@ -886,7 +902,18 @@ def main() -> int:
     ap.add_argument("--max-files", type=int, default=6)
     ap.add_argument("--max-subgroups", type=int, default=60)
     ap.add_argument("--workers", type=int, default=1, help="Parallel project workers (be polite: 1-3)")
-    ap.add_argument("--min-interval", type=float, default=0.12, help="Seconds between API calls (polite)")
+    ap.add_argument(
+        "--min-interval",
+        type=float,
+        default=float(os.environ.get("PB_GITLAB_MIN_INTERVAL") or "0.12"),
+        help="Seconds between API calls (polite). Capped by PB_GITLAB_INTER_REPO_SEC max 15s.",
+    )
+    ap.add_argument(
+        "--inter-repo-wait",
+        type=float,
+        default=float(os.environ.get("PB_GITLAB_INTER_REPO_SEC") or "0"),
+        help="Seconds to wait between GitLab repos/projects (hard max 15).",
+    )
     ap.add_argument("--run-id", default=os.environ.get("PRIVATE_BRAIN_RUN_ID") or f"gl-ingest-{int(time.time())}")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--list-presets", action="store_true")
@@ -963,6 +990,11 @@ def main() -> int:
     os.environ.setdefault("PRIVATE_BRAIN_AGENT_ID", "gitlab-ingest")
     os.environ.setdefault("PRIVATE_BRAIN_ROLE", "gitlab-ingest")
 
+    # Cap inter-repo wait at 15s (MVP law)
+    inter_repo = max(0.0, min(15.0, float(args.inter_repo_wait)))
+    os.environ["PB_GITLAB_INTER_REPO_SEC"] = str(inter_repo)
+    # Cap API min_interval so throttle never exceeds 15s either
+    args.min_interval = max(0.05, min(15.0, float(args.min_interval)))
     client = GitLabClient(instance, token=args.token, min_interval=args.min_interval)
     eng = GitLabIngestor(
         client,

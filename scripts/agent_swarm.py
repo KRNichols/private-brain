@@ -495,8 +495,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Shared-topology multi-agent swarm")
     ap.add_argument("cmd", choices=["sweep", "decompose", "status"])
     ap.add_argument("--prompt", default="status of private brain knowledge graph")
-    ap.add_argument("--agents", type=int, default=32)
-    ap.add_argument("--workers", type=int, default=0, help="thread pool size (0=min(agents,32))")
+    ap.add_argument("--agents", type=int, default=32, help="agent count (MVP max 64)")
+    ap.add_argument("--workers", type=int, default=0, help="thread pool size (0=min(agents,64))")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 

@@ -22,13 +22,13 @@ if not defined CODEX_HOME set "CODEX_HOME=%USERPROFILE%\.codex"
 if defined CODEX_HOME_OVERRIDE set "CODEX_HOME=%CODEX_HOME_OVERRIDE%"
 if not defined PRIVATE_BRAIN_HOME set "PRIVATE_BRAIN_HOME=%CODEX_HOME%\private-brain"
 
-set "PB_GODSEYE=0"
-if not defined PB_SWARM_AGENTS set "PB_SWARM_AGENTS=0"
+REM Default headless; -GodsEye turns GUI on. Do NOT pre-define PB_GODSEYE=0 then
+REM try "if not defined" (dead code). Max agents MVP law = 64.
+if not defined PB_GODSEYE set "PB_GODSEYE=0"
+if not defined PB_SWARM_AGENTS set "PB_SWARM_AGENTS=64"
 REM Always-on organism defaults (Windows Corporate)
 if not defined PB_ENTERPRISE set "PB_ENTERPRISE=1"
-if not defined PB_GODSEYE set "PB_GODSEYE=1"
-if not defined PB_SWARM_AGENTS set "PB_SWARM_AGENTS=auto"
-if not defined PB_MAX_AGENTS set "PB_MAX_AGENTS=auto"
+if not defined PB_MAX_AGENTS set "PB_MAX_AGENTS=64"
 if not defined PB_AWS_REGION set "PB_AWS_REGION=gov-region-1"
 set "PROFILE=beast-enterprise"
 set "EXTRA="
@@ -66,6 +66,7 @@ set "PYGAME_HIDE_SUPPORT_PROMPT=1"
 
 :parse
 if "%~1"=="" goto after_parse
+set "_arg=%~1"
 
 if /I "%~1"=="-h" goto help
 if /I "%~1"=="--help" goto help

@@ -92,6 +92,11 @@ audit('agent_spawn', agent_id=r'''$AgentId''', role=r'''$Role''', run_id=r'''$Ru
 Write-Host "SPAWNED $AgentId" -ForegroundColor Green
 Write-Host "PROMPT  $outPrompt"
 
+# Actually launch workers (not register-only). Watcher + crawl/graph roles get a process.
+$workerPid = $null
+$logsDir = Join-Path $BrainRoot ".brain\logs"
+New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
+
 if ($Role -eq "watcher" -or $StartWatcherLoop) {
     $pidFile = Join-Path $BrainRoot ".brain\state\watcher.pid"
     $p = Start-Process -FilePath $Py -ArgumentList @(
@@ -99,9 +104,52 @@ if ($Role -eq "watcher" -or $StartWatcherLoop) {
         "--agent-id", $AgentId,
         "--run-id", $RunId,
         "--interval", "30"
-    ) -PassThru
+    ) -PassThru -WindowStyle Hidden
     Set-Content -Path $pidFile -Value $p.Id -Encoding ascii
+    $workerPid = $p.Id
     Write-Host "watcher_loop pid=$($p.Id)"
+} elseif ($Role -in @(
+    "gitlab-topo", "gitlab-deep",
+    "jira-topo", "jira-deep",
+    "confluence-topo", "confluence-deep",
+    "graph-writer", "retriever", "auditor", "visualizer"
+)) {
+    $workerPy = Join-Path $BrainRoot "scripts\agent_role_worker.py"
+    if (-not (Test-Path $workerPy)) {
+        # Fallback: lightweight inline worker that audits heartbeat + optional scope URL crawl
+        $workerPy = Join-Path $BrainRoot "scripts\agent_swarm.py"
+    }
+    $outLog = Join-Path $logsDir "$AgentId.out.log"
+    $argList = @()
+    if (Test-Path (Join-Path $BrainRoot "scripts\agent_role_worker.py")) {
+        $argList = @(
+            (Join-Path $BrainRoot "scripts\agent_role_worker.py"),
+            "--role", $Role,
+            "--agent-id", $AgentId,
+            "--run-id", $RunId,
+            "--scope-json", $ScopeJson
+        )
+    } else {
+        # swarm single-slice fallback
+        $argList = @(
+            (Join-Path $BrainRoot "scripts\agent_swarm.py"),
+            "sweep",
+            "--prompt", "role=$Role agent=$AgentId scope=$ScopeJson",
+            "--agents", "1"
+        )
+    }
+    $p = Start-Process -FilePath $Py -ArgumentList $argList `
+        -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $outLog -RedirectStandardError $outLog
+    $workerPid = $p.Id
+    $regPath = Join-Path $regDir "$AgentId.json"
+    try {
+        $regObj = Get-Content -Raw $regPath | ConvertFrom-Json
+        $regObj | Add-Member -NotePropertyName pid -NotePropertyValue $p.Id -Force
+        $regObj | Add-Member -NotePropertyName status -NotePropertyValue "running" -Force
+        $regObj | ConvertTo-Json -Depth 6 | Set-Content -Path $regPath -Encoding UTF8
+    } catch {}
+    Write-Host "WORKER $AgentId pid=$($p.Id) log=$outLog" -ForegroundColor Green
 }
 
 # stdout machine-readable for orchestrator
@@ -110,4 +158,6 @@ if ($Role -eq "watcher" -or $StartWatcherLoop) {
     role = $Role
     run_id = $RunId
     prompt_path = $outPrompt
+    pid = $workerPid
+    status = $(if ($workerPid) { "running" } else { "spawned" })
 } | ConvertTo-Json -Compress
