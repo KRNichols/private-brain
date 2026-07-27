@@ -584,8 +584,31 @@ def main() -> int:
                 preset=preset,
             )
         except PermissionError as e:
-            print(f"ERROR: enterprise policy blocked ingest: {e}", file=sys.stderr)
-            return 2
+            try:
+                from ingest_scenario import handle_blocked_ingest
+
+                sc = handle_blocked_ingest(
+                    blocked_url=str(detected.get("url") or detected.get("base") or ""),
+                    reason=str(e),
+                )
+                print(f"ERROR: enterprise policy blocked ingest: {e}", file=sys.stderr)
+                if sc.get("suggested_gitlab"):
+                    print(
+                        f"SELF-HEAL: use internal GitLab {sc['suggested_gitlab']} "
+                        f"(beastMode -ingestion {sc['suggested_gitlab']})",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        "SCENARIO: ask human for internal GitLab/Jira/Confluence URLs — synthesizer pending.",
+                        file=sys.stderr,
+                    )
+                print(sc.get("inject") or "", file=sys.stderr)
+                return int(sc.get("exit_code") or 2)
+            except Exception as se:
+                print(f"ERROR: enterprise policy blocked ingest: {e}", file=sys.stderr)
+                print(f"ingest_scenario soft-fail: {se}", file=sys.stderr)
+                return 2
 
     if args.verbose:
         print(

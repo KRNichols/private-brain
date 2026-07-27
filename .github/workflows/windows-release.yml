@@ -201,6 +201,36 @@ jobs:
           & $py (Join-Path $env:GITHUB_WORKSPACE "scripts\judge_package_coverage.py")
           if ($LASTEXITCODE -ne 0) { throw "coverage judge failed" }
 
+      - name: Mint WINDOWS-READY zip (release kit)
+        if: success()
+        shell: bash
+        env:
+          PB_ENTERPRISE: "1"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_CI: "1"
+        run: |
+          set -e
+          mkdir -p dist
+          if [ -x scripts/freeze_for_corporate ] || [ -f scripts/freeze_for_corporate ]; then
+            bash scripts/freeze_for_corporate || true
+          fi
+          # Always ensure WINDOWS-READY exists (freeze preferred; fallback pack installers/windows)
+          if [ ! -f dist/PrivateBrain-WINDOWS-READY.zip ]; then
+            echo "freeze missed WINDOWS-READY — packing installers/windows + engine scripts"
+            STAGE=$(mktemp -d)
+            mkdir -p "$STAGE/tools/install" "$STAGE/tools/engine"
+            cp -a installers/windows/. "$STAGE/" 2>/dev/null || true
+            cp -a installers/windows/. "$STAGE/tools/install/" 2>/dev/null || true
+            cp -a scripts hooks config agents private_brain package "$STAGE/tools/engine/" 2>/dev/null || true
+            cp -a installers/shared/ROOT_README.md "$STAGE/README.md" 2>/dev/null || cp README.md "$STAGE/README.md"
+            cp -a installers/shared/DIAGRAM.md "$STAGE/DIAGRAM.md" 2>/dev/null || true
+            (cd "$STAGE" && zip -r -q "$GITHUB_WORKSPACE/dist/PrivateBrain-WINDOWS-READY.zip" .)
+          fi
+          test -f dist/PrivateBrain-WINDOWS-READY.zip
+          (cd dist && sha256sum PrivateBrain-WINDOWS-READY.zip > PrivateBrain-WINDOWS-READY.sha256)
+          ls -la dist/PrivateBrain-WINDOWS-READY.zip dist/PrivateBrain-WINDOWS-READY.sha256
+          echo "WINDOWS_READY_BYTES=$(wc -c < dist/PrivateBrain-WINDOWS-READY.zip)" >> "$GITHUB_ENV"
+
       - name: Upload release artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -208,10 +238,33 @@ jobs:
           name: windows-release-mvp-${{ github.sha }}
           path: |
             e2e-reports/**
+            dist/PrivateBrain-WINDOWS-READY.zip
+            dist/PrivateBrain-WINDOWS-READY.sha256
+            dist/READY.sha256
+            dist/PrivateBrain-WINDOWS-READY.zip
             .codex-home/hooks.json
             .codex-home/private-brain/.brain/state/**
           if-no-files-found: warn
           include-hidden-files: true
+
+      - name: GitHub Release (windows-ready)
+        if: success() && github.ref == 'refs/heads/main'
+        permissions:
+          contents: write
+        shell: bash
+        run: |
+          set -e
+          TAG="windows-ready-${GITHUB_SHA::7}"
+          # idempotent: delete tag release if exists
+          gh release delete "$TAG" -y 2>/dev/null || true
+          git tag -f "$TAG" "$GITHUB_SHA" 2>/dev/null || true
+          git push -f origin "$TAG" 2>/dev/null || true
+          gh release create "$TAG" \
+            dist/PrivateBrain-WINDOWS-READY.zip \
+            dist/PrivateBrain-WINDOWS-READY.sha256 \
+            --title "Windows READY ${GITHUB_SHA::7}" \
+            --notes "Windows Release MVP green. Codex pin 0.144.3. Max agents 64. Ingest: PB_ALLOW_PUBLIC_INGEST for CI public OSS; pilot heal→ask→synthesize for internal hosts. SHA: ${GITHUB_SHA}"
+          echo "Released $TAG"
 
       - name: READY banner
         if: success()
@@ -222,4 +275,5 @@ jobs:
           Write-Host " Codex pin: 0.144.3"
           Write-Host " Max agents: 64"
           Write-Host " GitLab inter-repo wait cap: 15s"
+          Write-Host " WINDOWS-READY zip minted + release"
           Write-Host "============================================"

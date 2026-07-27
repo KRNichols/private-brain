@@ -634,6 +634,25 @@ def phase10_e2e_suite(brain: Path) -> None:
         ("ci_force_feed_public", "ci_force_feed_public.py", 900),
         ("nuclear_zero_fail", "nuclear_zero_fail.py", 600),
     ]
+    # Scenario heal modules (hosts/tokens/index/AWS/sessions/GodsEye)
+    gate(
+        "ingest_scenario_module",
+        (SCRIPTS / "ingest_scenario.py").is_file(),
+    )
+    gate(
+        "scenario_heal_module",
+        (SCRIPTS / "scenario_heal.py").is_file(),
+    )
+    try:
+        r_sc = _run(
+            [sys.executable, str(SCRIPTS / "scenario_heal.py"), "synthesize", "--reason", "mvp"],
+            env=env,
+            timeout=90,
+            cwd=ROOT,
+        )
+        gate("scenario_heal_synthesize", r_sc.returncode == 0, (r_sc.stdout or r_sc.stderr or "")[-200:])
+    except Exception as e:
+        gate("scenario_heal_synthesize", False, str(e))
     # Always run suite from REPO root scripts (installers + workflows present)
     env["PB_REPO_ROOT"] = str(ROOT)
     env["GITHUB_WORKSPACE"] = str(ROOT)

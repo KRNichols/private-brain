@@ -260,6 +260,78 @@ def route(prompt: str) -> dict[str, Any] | None:
             return {"matched": True, "title": "brief fail", "context": str(e), "system": "fail"}
 
     # kingdom / api knowledge refresh
+    # Pilot gaps: hosts/tokens/index/AWS/sessions/GodsEye — heal → ask-once → synthesize (≤64 agents)
+    if any(
+        x in low
+        for x in (
+            "ingest blocked",
+            "blocked ingest",
+            "need gitlab url",
+            "where is gitlab",
+            "what is our gitlab",
+            "confirm gitlab",
+            "set gitlab url",
+            "internal gitlab",
+            "jira url",
+            "confluence url",
+            "ingest scenario",
+            "self host gitlab",
+            "self-hosted gitlab",
+            "where do i crawl",
+            "what hosts for crawl",
+            "pilot gaps",
+            "what is missing",
+            "what do we need",
+            "missing hosts",
+            "missing tokens",
+            "package index",
+            "pip index",
+            "corporate library url",
+            "aws profile",
+            "llm shim",
+            "sessions empty",
+            "synthesize scenario",
+            "open gaps",
+            "heal and ask",
+        )
+    ):
+        try:
+            from scenario_heal import conversation_inject, synthesize_all
+
+            doc = synthesize_all(reason="conversational_gap_scan")
+            inj = conversation_inject()
+            return {
+                "matched": True,
+                "title": "PILOT SCENARIOS · heal → ask-once → synthesize (≤64)",
+                "context": (
+                    f"{inj}\n\ngap_count={doc.get('gap_count')} agents={len(doc.get('agents_spawned') or [])}\n"
+                    "If human pasted a URL/token policy answer in this message, extract and persist to "
+                    "day1_map/golden/env — never invent. Re-run ingest after hosts known."
+                )[:16000],
+                "system": "Pilot scenarios: heal from state; ASK once for open gaps; synthesizer agents ≤64",
+            }
+        except Exception as e:
+            # fallback ingest-only path
+            try:
+                from ingest_scenario import conversation_inject, handle_blocked_ingest, heal_hosts_from_state
+
+                healed = heal_hosts_from_state()
+                sc = handle_blocked_ingest(blocked_url=None, reason=str(e))
+                inj = conversation_inject(sc.get("scenario"))
+                return {
+                    "matched": True,
+                    "title": "INGEST SCENARIO · heal then ask",
+                    "context": f"{inj}\nhealed={json.dumps(healed)}"[:16000],
+                    "system": "Ingest scenario fallback",
+                }
+            except Exception as e2:
+                return {
+                    "matched": True,
+                    "title": "SCENARIO · error",
+                    "context": f"scenario_heal failed: {e}; fallback: {e2}",
+                    "system": "scenario error",
+                }
+
     if any(x in low for x in ("kingdom keys", "show apis", "how does corporate package index", "corporate_library api", "gitlab api")):
         keys = _ROOT / "docs" / "KINGDOM_KEYS.md"
         text = keys.read_text(encoding="utf-8")[:14000] if keys.exists() else "KINGDOM_KEYS.md missing"

@@ -104,14 +104,35 @@ def main() -> int:
                     pass
         except Exception:
             pass
+        # Pending pilot scenarios (hosts/tokens/index/AWS/sessions/GodsEye) — heal→ask→synthesize
+        ingest_sc = ""
+        try:
+            from scenario_heal import conversation_inject, synthesize_all
+
+            # Light scan on session open (no network) — write pending if high gaps
+            synthesize_all(reason="session_start_gap_scan")
+            inj = conversation_inject()
+            if inj.strip():
+                ingest_sc = "\n\n" + inj
+        except Exception:
+            try:
+                from ingest_scenario import conversation_inject as _ic
+
+                inj = _ic()
+                if inj.strip():
+                    ingest_sc = "\n\n" + inj
+            except Exception:
+                pass
         extra = (
             ctx
             + golden
             + kingdom
             + mind
+            + ingest_sc
             + "\n\nBEAST MODE ACTIVE (auto on every Codex open). "
             "Human manages Private Brain by conversation only — no shell parade. "
-            "Never ask permission. Full system access intentional. "
+            "Never ask permission for tool use — but DO ask once for missing internal GitLab/Jira/Confluence URLs "
+            "when pending_ingest_scenario is active (heal from state first; never invent hosts). "
             "ZERO FLAGS: fire drill, doctor, heal, metrics, day brief, phase 2 handoff, show GodsEye. "
             "GOLDEN CONFIG + KINGDOM KEYS are law for hosts/APIs/AWS when present. "
             "Cite node_ids while beast is on. "
