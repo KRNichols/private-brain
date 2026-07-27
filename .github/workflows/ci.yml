@@ -278,27 +278,41 @@ jobs:
           include-hidden-files: true
 
   live-codex-golden:
-    name: live Codex golden (when secrets present)
+    name: live Codex golden (arms with secrets)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Auto-arms when Corporate/OpenAI secrets land — no fake green without them
-    if: ${{ secrets.OPENAI_API_KEY != '' || secrets.CODEX_API_KEY != '' || secrets.CHATGPT_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - name: Detect live-codex secrets
+        id: secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        run: |
+          if [ -n "${OPENAI_API_KEY}" ] || [ -n "${CODEX_API_KEY}" ]; then
+            echo "armed=true" >> "$GITHUB_OUTPUT"
+            echo "Live Codex secrets present — hard golden will run"
+          else
+            echo "armed=false" >> "$GITHUB_OUTPUT"
+            echo "No OPENAI_API_KEY/CODEX_API_KEY yet — scaffold only (Corporate secrets pending)"
+          fi
+      - if: steps.secrets.outputs.armed == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install Codex CLI
+      - if: steps.secrets.outputs.armed == 'true'
+        name: Install Codex CLI
         run: |
           set -e
           npm install -g @openai/codex@latest
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
           command -v codex
           codex --version
-      - name: Live codex exec golden (HARD)
+      - if: steps.secrets.outputs.armed == 'true'
+        name: Live codex exec golden (HARD)
         env:
           PB_ENTERPRISE: "1"
           PB_CI: "1"
@@ -312,9 +326,15 @@ jobs:
         run: |
           set -e
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
-          # Prefer API key login path if codex supports env auth
           python scripts/rag_issue_golden_e2e.py
           python scripts/codex_cli_smoke.py
+      - if: steps.secrets.outputs.armed != 'true'
+        name: Scaffold ready (waiting for Corporate secrets)
+        run: |
+          echo "OK: live-codex path is wired. Add repo secrets OPENAI_API_KEY or CODEX_API_KEY to arm hard live golden."
+          test -f scripts/rag_issue_golden_e2e.py
+          test -f config/golden_fixtures.json
+          test -f config/corporate_golden_join.example.json
 
   sanitize-branding:
     name: sanitize branding lint
