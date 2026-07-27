@@ -108,7 +108,18 @@ def _home_layout() -> tuple[Path, Path]:
 
 def _sync_brain(brain: Path) -> None:
     """Copy engine into CODEX_HOME/private-brain like START.ps1 sideload."""
-    for rel in ("scripts", "hooks", "config", "agents", "private_brain", "visualizer", "package"):
+    for rel in (
+        "scripts",
+        "hooks",
+        "config",
+        "agents",
+        "private_brain",
+        "visualizer",
+        "package",
+        "installers",
+        "loop_graph_harness",
+        ".github",
+    ):
         src = ROOT / rel
         if not src.exists():
             continue
@@ -121,11 +132,13 @@ def _sync_brain(brain: Path) -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
     # root helpers
-    for name in ("Install-PrivateBrain.ps1", "SETUP.ps1", "beast-mode.md", "AGENTS.md"):
+    for name in ("Install-PrivateBrain.ps1", "SETUP.ps1", "beast-mode.md", "AGENTS.md", "README.md"):
         src = ROOT / name
         if src.is_file():
             shutil.copy2(src, brain / name)
     os.environ["PYTHONPATH"] = str(brain / "scripts") + os.pathsep + str(brain)
+    os.environ["PB_REPO_ROOT"] = str(ROOT)
+    os.environ.setdefault("GITHUB_WORKSPACE", str(ROOT))
 
 
 def phase0_lint() -> None:
@@ -432,27 +445,27 @@ def phase7_crawlers(brain: Path) -> None:
     # tiny public crawl if network
     crawl = brain / "scripts" / "crawl_public.py"
     # try module invocation with minimal flags
-    # Prefer force-feed / github ingest for actual crawl; crawl_public --help already gated.
-    # If crawl_public supports a default demo, run it; else require help path only.
+    # Light public gitlab topology crawl
     r = _run(
-        [sys.executable, str(crawl), "--github", "actions/checkout", "--max-issues", "2"],
+        [
+            sys.executable,
+            str(crawl),
+            "--gitlab",
+            "--gitlab-base",
+            "https://gitlab.com",
+            "--gitlab-group",
+            "gitlab-org",
+            "--max-projects",
+            "2",
+            "--max-mrs",
+            "1",
+            "--max-issues",
+            "2",
+        ],
         env=env,
         timeout=300,
     )
-    out = ((r.stdout or "") + (r.stderr or "")).lower()
-    ok = r.returncode == 0 or "unrecognized" in out or "invalid" in out or "error" not in out[:80]
-    # Hard: script must be importable and executable; network failures on free runners still surface
-    if r.returncode != 0 and ("usage" in out or "help" in out or "required" in out):
-        # CLI shape differs — try module import path
-        r2 = _run(
-            [sys.executable, "-c", "import crawl_public; print('crawl_public_ok')"],
-            env=env,
-            timeout=60,
-        )
-        ok = r2.returncode == 0 and "crawl_public_ok" in (r2.stdout or "")
-        gate("crawl_public_run", ok, (r2.stdout or r2.stderr or r.stderr or "")[-240:])
-    else:
-        gate("crawl_public_run", ok, (r.stdout or r.stderr or "")[-240:])
+    gate("crawl_public_run", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
 
 
 def phase8_ingestors(brain: Path) -> None:
@@ -575,15 +588,19 @@ def phase10_e2e_suite(brain: Path) -> None:
         ("ci_force_feed_public", "ci_force_feed_public.py", 900),
         ("nuclear_zero_fail", "nuclear_zero_fail.py", 600),
     ]
+    # Always run suite from REPO root scripts (installers + workflows present)
+    env["PB_REPO_ROOT"] = str(ROOT)
+    env["GITHUB_WORKSPACE"] = str(ROOT)
+    env["PRIVATE_BRAIN_HOME"] = str(brain)
     for name, script, timeout in suite:
-        sp = brain / "scripts" / script
+        sp = SCRIPTS / script
         if not sp.is_file():
-            sp = SCRIPTS / script
+            sp = brain / "scripts" / script
         if not sp.is_file():
             gate(name, False, f"missing {script}")
             continue
         print(f"  … running {script}", flush=True)
-        r = _run([sys.executable, str(sp)], env=env, timeout=timeout)
+        r = _run([sys.executable, str(sp)], env=env, timeout=timeout, cwd=ROOT)
         gate(name, r.returncode == 0, (r.stdout or r.stderr or "")[-400:])
 
 

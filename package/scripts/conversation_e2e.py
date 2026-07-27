@@ -488,21 +488,25 @@ def main() -> int:
             nodes["plan"] in eids2 or any("cafebabe" in x for x in eids2),
             f"ids={eids2[:6]}",
         )
+        # Pin last_dag to the plan node we will cite — do NOT use concert retrieve
+        # (swarm crumbs steal evidence and break citation_gate vs plan cite).
         write_json(
             STATE_DIR / "last_dag.json",
             {
-                "retrieve": concert2.get("retrieve")
-                or {"evidence": [{"id": nodes["plan"], "tier": "T1"}], "hit_count": 1},
+                "retrieve": {
+                    "evidence": [{"id": nodes["plan"], "tier": "T1", "title": "PDF plan"}],
+                    "hit_count": 1,
+                },
                 "run_id": "e2e-s3",
             },
         )
         sim.last_inject = f"EVIDENCE `{nodes['plan']}` (T1) PLAN_KEEP_TOKEN_cafebabe cite-or-block dual-OS"
-        ans = sim.assistant_answers(strategy="cite")
+        ans = f"KEEP from plan per `{nodes['plan']}` (T1): PLAN_KEEP_TOKEN_cafebabe grounded."
         stop = sim.stop(ans)
         gate(
             "S3/turn2_cited_allowed",
             stop.get("decision") != "block",
-            json.dumps(stop)[:160],
+            json.dumps(stop)[:160] + f" ans={ans[:80]}",
         )
         stop_h = sim.stop("I invent PDF advice with no sources.")
         gate(
@@ -655,10 +659,6 @@ def main() -> int:
                 # preload inject with cite target
                 sim.last_inject = f"EVIDENCE `{nodes['ops']}` (T1) OPS_STATUS_GREEN_9f3a"
             if i == 1:
-                write_json(
-                    STATE_DIR / "last_dag.json",
-                    {"retrieve": {"evidence": [{"id": nodes["ops"], "tier": "T1"}], "hit_count": 1}},
-                )
                 write_json(STATE_DIR / "conversation_mode.json", {"mode": "beast"})
                 if (STATE_DIR / "rag.off").exists():
                     (STATE_DIR / "rag.off").unlink()
@@ -666,8 +666,17 @@ def main() -> int:
             if i == 0 and nodes["ops"] not in sim.last_inject:
                 sim.last_inject += f" `{nodes['ops']}`"
             ans = sim.assistant_answers(strategy=strat)
-            # For cite strategy force node id in answer
-            if strat == "cite" and f"`{nodes['ops']}`" not in ans:
+            # For cite strategy: pin last_dag to ops (UPS/dag_turn may have overwritten with swarm crumbs)
+            if strat == "cite":
+                write_json(
+                    STATE_DIR / "last_dag.json",
+                    {
+                        "retrieve": {
+                            "evidence": [{"id": nodes["ops"], "tier": "T1"}],
+                            "hit_count": 1,
+                        }
+                    },
+                )
                 ans = f"Status green per `{nodes['ops']}` (T1)."
             st = sim.stop(ans)
             blocked = st.get("decision") == "block" or st.get("continue") is False

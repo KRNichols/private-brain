@@ -72,11 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$brain\.brain\state" | Out-Null
           New-Item -ItemType Directory -Force -Path "$brain\.brain\logs" | Out-Null
           # Sideload engine into private-brain (START.ps1 shape)
-          foreach ($rel in @("scripts","hooks","config","agents","private_brain","visualizer","package","loop_graph_harness")) {
+          foreach ($rel in @("scripts","hooks","config","agents","private_brain","visualizer","package","loop_graph_harness","installers",".github")) {
             if (Test-Path $rel) {
               Copy-Item -Recurse -Force $rel (Join-Path $brain $rel)
             }
           }
+          echo "PB_REPO_ROOT=$env:GITHUB_WORKSPACE" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
           foreach ($f in @("Install-PrivateBrain.ps1","SETUP.ps1","beast-mode.md","AGENTS.md","README.md")) {
             if (Test-Path $f) { Copy-Item -Force $f (Join-Path $brain $f) }
           }
@@ -175,10 +176,12 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PB_REPO_ROOT: ${{ github.workspace }}
         run: |
           $ErrorActionPreference = "Continue"
           $py = Join-Path $env:PRIVATE_BRAIN_HOME "venv\Scripts\python.exe"
           $env:PYTHONPATH = "$(Join-Path $env:GITHUB_WORKSPACE 'scripts');$(Join-Path $env:PRIVATE_BRAIN_HOME 'scripts');$($env:PRIVATE_BRAIN_HOME);$($env:GITHUB_WORKSPACE)"
+          $env:PB_REPO_ROOT = $env:GITHUB_WORKSPACE
           # Prefer workspace scripts (latest) for MVP runner
           & $py (Join-Path $env:GITHUB_WORKSPACE "scripts\windows_release_mvp.py")
           if ($LASTEXITCODE -ne 0) { throw "WINDOWS RELEASE MVP FAILED" }

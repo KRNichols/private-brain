@@ -20,9 +20,25 @@ from pathlib import Path
 from typing import Any, Callable
 
 _SCRIPTS = Path(__file__).resolve().parent
-_ROOT = _SCRIPTS.parent
+# Prefer full repo root when sideloaded under ~/.codex/private-brain (MVP layout)
+_ROOT = Path(
+    os.environ.get("PB_REPO_ROOT")
+    or os.environ.get("GITHUB_WORKSPACE")
+    or _SCRIPTS.parent
+).resolve()
+# If installers missing at script parent, walk up / use GITHUB_WORKSPACE
+if not (_ROOT / "installers" / "windows" / "START.ps1").is_file():
+    for cand in (
+        Path(os.environ.get("GITHUB_WORKSPACE") or ""),
+        _SCRIPTS.parent.parent,  # repo if scripts nested
+        Path.cwd(),
+    ):
+        if cand and (cand / "installers" / "windows" / "START.ps1").is_file():
+            _ROOT = cand.resolve()
+            break
 sys.path.insert(0, str(_SCRIPTS))
 sys.path.insert(0, str(_ROOT))
+# PRIVATE_BRAIN_HOME may be sideload home; keep for runtime graph — do not overwrite if set
 os.environ.setdefault("PRIVATE_BRAIN_HOME", str(_ROOT))
 os.environ.setdefault("PB_ENTERPRISE", "1")
 

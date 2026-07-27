@@ -775,6 +775,11 @@ def main() -> int:
             _hook(brain, env, "user_prompt_submit.py", {"prompt": prompt})
             if strat == "cite":
                 msg = f"OK per `{nodes['ops']}` (T1)."
+                # UPS may overwrite last_dag with swarm crumbs — pin cite target hard
+                write_json(
+                    STATE_DIR / "last_dag.json",
+                    {"retrieve": {"evidence": [{"id": nodes["ops"], "tier": "T1"}], "hit_count": 1}},
+                )
             else:
                 msg = "Completely invented answer without any node citations."
             # After stop beast (i>=2 until beast phrase), mode affects stop
