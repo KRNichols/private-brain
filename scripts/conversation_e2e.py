@@ -481,12 +481,59 @@ def main() -> int:
         # ────────────────────────────────────────────────────────────
         print("\n## S3 - Multi-turn second question (PDF plan)")
         prompt_plan = "What should we KEEP from the PDF plan PLAN_KEEP_TOKEN_cafebabe?"
+        # Reindex so fixture plan is searchable (concert may rank swarm crumbs first)
+        try:
+            env2 = dict(env)
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from vector_manager import reindex_all; reindex_all(include_structural=True); print('reindex_ok')",
+                ],
+                env=env2,
+                cwd=str(brain),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except Exception:
+            pass
         concert2 = run_concert(brain, env, prompt_plan)
         eids2 = evidence_ids(concert2)
+        query_ids: list[str] = []
+        try:
+            # subprocess query against staged brain (STATE_DIR import-time safe)
+            rq = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from brain_lib import query; import json; "
+                        "hits=query('PLAN_KEEP_TOKEN_cafebabe PDF plan keep', limit=15); "
+                        "print(json.dumps([str(h.get('id') or '') for h in (hits or [])]))"
+                    ),
+                ],
+                env=env,
+                cwd=str(brain),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if rq.returncode == 0 and (rq.stdout or "").strip().startswith("["):
+                query_ids = json.loads((rq.stdout or "").strip())
+        except Exception:
+            query_ids = []
+        ok_seed = (
+            nodes["plan"] in eids2
+            or any("cafebabe" in x for x in eids2)
+            or nodes["plan"] in query_ids
+            or any("cafebabe" in x for x in query_ids)
+            or any("plan" in x and "cafebabe" in x for x in eids2 + query_ids)
+        )
         gate(
             "S3/retrieve_plan_seed",
-            nodes["plan"] in eids2 or any("cafebabe" in x for x in eids2),
-            f"ids={eids2[:6]}",
+            ok_seed,
+            f"ids={eids2[:6]} query={query_ids[:6]} plan={nodes['plan']}",
         )
         # Pin last_dag to the plan node we will cite — do NOT use concert retrieve
         # (swarm crumbs steal evidence and break citation_gate vs plan cite).

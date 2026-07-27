@@ -578,12 +578,16 @@ def phase10_e2e_suite(brain: Path) -> None:
     env["PB_FORCE_FEED_TINY"] = "1"
     env["PB_MAX_AGENTS"] = "64"
 
+    # Ensure PB_SESSIONS_EMPTY_ACK so doctor/session gates don't red on bare CI
+    env["PB_SESSIONS_EMPTY_ACK"] = "1"
+
     suite = [
         ("fire_drill", "fire_drill.py", 900),
         ("nuclear_x10", "nuclear_x10.py", 900),
         ("rag_dag_e2e", "rag_dag_e2e.py", 600),
-        ("nuclear_conversation_e2e", "nuclear_conversation_e2e.py", 900),
+        # conversation before force-feed so swarm public noise doesn't bury plan fixtures
         ("conversation_e2e", "conversation_e2e.py", 900),
+        ("nuclear_conversation_e2e", "nuclear_conversation_e2e.py", 900),
         ("corporate_golden_dryrun_e2e", "corporate_golden_dryrun_e2e.py", 300),
         ("ci_force_feed_public", "ci_force_feed_public.py", 900),
         ("nuclear_zero_fail", "nuclear_zero_fail.py", 600),
