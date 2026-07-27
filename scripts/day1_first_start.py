@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Intelligent Day-1 first start — map environment and choose package route.
+"""Intelligent Day-1 first start - map environment and choose package route.
 
 Routes:
-  corporate_library   — Corporate Library (Corporate Package Index) (default Corporate approved pip index)
-  aws    — AWS CodeArtifact / Government Cloud-style approved index
-  headless — stdlib-only core (no third-party; GodsEye off)
+  corporate_library   - Corporate Library (Corporate Package Index) (default Corporate approved pip index)
+  aws    - AWS CodeArtifact / Government Cloud-style approved index
+  headless - stdlib-only core (no third-party; GodsEye off)
 
 Writes:
   - corporate-package-index.env / day1.env (kit root + brain home)
@@ -32,6 +32,44 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+# Windows runners default to cp1252/charmap - box-drawing and em-dashes crash prints.
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+os.environ.setdefault("PYTHONUTF8", "1")
+
+
+def _force_utf8_stdio() -> None:
+    """Hard requirement: never die printing status on Windows charmap consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:
+            try:
+                import io
+
+                buf = getattr(stream, "buffer", None)
+                if buf is not None:
+                    wrapper = io.TextIOWrapper(buf, encoding="utf-8", errors="replace", line_buffering=True)
+                    if stream is sys.stdout:
+                        sys.stdout = wrapper  # type: ignore[assignment]
+                    else:
+                        sys.stderr = wrapper  # type: ignore[assignment]
+            except Exception:
+                pass
+
+
+def _safe_print(*args: Any, file: Any = None, **kwargs: Any) -> None:
+    """Print that never raises UnicodeEncodeError (Windows cp1252)."""
+    target = file if file is not None else sys.stdout
+    try:
+        print(*args, file=target, **kwargs)
+    except UnicodeEncodeError:
+        text = " ".join(str(a) for a in args)
+        text = text.encode("ascii", errors="replace").decode("ascii")
+        try:
+            print(text, file=target, **kwargs)
+        except Exception:
+            pass
+
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -54,9 +92,9 @@ def kit_root() -> Path:
     env = os.environ.get("PB_KIT_ROOT")
     if env:
         return Path(env)
-    # scripts/ → package/ → kit root (mac|windows)
+    # scripts/ -> package/ -> kit root (mac|windows)
     here = Path(__file__).resolve()
-    # .../package/scripts/day1_first_start.py → kit = parents[2]
+    # .../package/scripts/day1_first_start.py -> kit = parents[2]
     if here.parent.name == "scripts" and here.parent.parent.name == "package":
         return here.parent.parent.parent
     if here.parent.name == "scripts":
@@ -213,18 +251,18 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
         return "headless"
 
     print()
-    print("══ Day-1 package route ══════════════════════════════════")
+    print("== Day-1 package route ==================================")
     print("Codex will use Private Brain as a sideload (not a separate product CLI).")
     print("Pick how optional packages (GodsEye pygame/OpenGL) are sourced.")
-    print("Core RAG-DAG is always stdlib — it works on every route.")
+    print("Core RAG-DAG is always stdlib - it works on every route.")
     if coc:
         print(
-            f"(config-of-config suggests: {coc_route or 'n/a'} · "
-            f"SSM loopback ready={((coc.get('aws_shim') or {}).get('ssm_loopback_ready'))} · "
+            f"(config-of-config suggests: {coc_route or 'n/a'} | "
+            f"SSM loopback ready={((coc.get('aws_shim') or {}).get('ssm_loopback_ready'))} | "
             f"AppGate~={((coc.get('appgate') or {}).get('likely_installed'))})"
         )
     print()
-    # intelligent default: scripted board → env → heuristics
+    # intelligent default: scripted board -> env -> heuristics
     default = "corporate_library"
     if probe.get("env_hints", {}).get("AWS_DEFAULT_REGION") or probe.get("env_hints", {}).get(
         "CODEARTIFACT_AUTH_TOKEN"
@@ -243,7 +281,7 @@ def choose_route(probe: dict[str, Any], *, route: str | None, noninteractive: bo
     print()
     choice = _ask("Route (corporate_library / aws / headless)", default, noninteractive=False).lower()
     if choice not in ROUTES:
-        print(f"Unknown route {choice!r} — using {default}")
+        print(f"Unknown route {choice!r} - using {default}")
         choice = default
     return choice
 
@@ -298,13 +336,13 @@ def collect_answers(
         organism = os.environ.get("PB_ORGANISM_INTERVIEW", "") in ("1", "true", "yes")
         print()
         if organism:
-            print("══════════════════════════════════════════════════════")
-            print("  Hey — I'm wiring Private Brain into Codex.")
+            print("======================================================")
+            print("  Hey - I'm wiring Private Brain into Codex.")
             print("  I'll ask a few things, then build the RAG-DAG myself.")
             print("  (Sessions under .codex are ingested automatically.)")
-            print("══════════════════════════════════════════════════════")
+            print("======================================================")
         print()
-        print("══ Homes ════════════════════════════════════════════════")
+        print("== Homes ================================================")
         print("Private Brain is a Codex SIDELOAD only (not a product CLI).")
         print(f"Detected CODEX_HOME={probe.get('codex', {}).get('CODEX_HOME')}")
         print(f"Detected brain={probe.get('private_brain', {}).get('PRIVATE_BRAIN_HOME')}")
@@ -315,7 +353,7 @@ def collect_answers(
         bh_path = _ask("PRIVATE_BRAIN_HOME (sideload / .brain home)", bh_path or default_brain)
 
         print()
-        print("══ Identity ═════════════════════════════════════════════")
+        print("== Identity =============================================")
         prog = _ask("Program id (what pilot program is this?)", prog or "corporate-pilot")
         klass = _ask("Classification", klass or "INTERNAL")
         h = _ask(
@@ -325,50 +363,50 @@ def collect_answers(
 
         # Packages first (human language)
         print()
-        print("══ Packages & libraries ═════════════════════════════════")
-        print("Hey — where can I download packages and libraries?")
+        print("== Packages & libraries =================================")
+        print("Hey - where can I download packages and libraries?")
         print("  (Corporate Library (Corporate Package Index) / CodeArtifact / or headless with no pip)")
         if meta["need_index"]:
-            print(f"Route={route} · example: {meta['example_index']}")
+            print(f"Route={route} | example: {meta['example_index']}")
             idx = _ask("Package index URL (PIP_INDEX_URL / Corporate Library simple URL)", idx or meta["example_index"])
             th = _ask("Trusted host for that index", th or meta["example_host"])
             _ask("Index username if needed (empty if anon/token-in-URL)", "")
-            print("(Tokens stay local — never commit day1.env)")
+            print("(Tokens stay local - never commit day1.env)")
         else:
             print("Headless route: core RAG needs no pip. GodsEye optional later.")
 
         print()
-        print("══ Code · plans · wiki ══════════════════════════════════")
-        print("Where is the code stored? (GitLab group/project URL — blank to skip)")
+        print("== Code | plans | wiki ==================================")
+        print("Where is the code stored? (GitLab group/project URL - blank to skip)")
         gl = _ask("GitLab URL", gl)
-        print("Where are plans and issues stored? (Jira base URL — blank to skip)")
+        print("Where are plans and issues stored? (Jira base URL - blank to skip)")
         jr = _ask("Jira URL", jr)
         print("Where is Confluence / the wiki? (blank to skip)")
         cf = _ask("Confluence URL", cf)
         app_raw = _ask("Is AppGate connected for those hosts right now? (y/N)", "n")
         appgate_ok = app_raw.lower() in ("y", "yes", "1", "true")
-        print("Tokens (optional) — stored in secrets store / local env only:")
+        print("Tokens (optional) - stored in secrets store / local env only:")
         gl_tok = _ask("GitLab token (empty=skip)", "")
         jr_tok = _ask("Jira token (empty=skip)", "")
         cf_tok = _ask("Confluence token (empty=skip)", "")
 
         print()
-        print("══ What happens next (automatic) ════════════════════════")
+        print("== What happens next (automatic) ========================")
         print("  1) Ingest ALL Codex sessions under .codex/sessions")
         print("  2) Build local RAG-DAG + spin GodsEye for progress")
         print("  3) Polite crawls (no DDOS) if URLs given")
         print("  4) Max agent swarm on the shared graph")
         print("  5) Connect AWS gov-region-1 when you tell me how")
 
-        # AWS — always ask (cloud RAG-DAG target); blanks = local-only until ready
+        # AWS - always ask (cloud RAG-DAG target); blanks = local-only until ready
         print()
-        print("══ AWS (where the RAG-DAG will live) ════════════════════")
+        print("== AWS (where the RAG-DAG will live) ====================")
         print("How do you connect to AWS? Empty answers = stay local-only (still OK).")
-        print("Target region default: gov-region-1 · models: edge gpt-5.1 · AWS enterprise-frontier-model")
-        aws_p = _ask("AWS_PROFILE (SSO/profile name — empty if later)", aws_p)
+        print("Target region default: gov-region-1 | models: edge gpt-5.1 | AWS enterprise-frontier-model")
+        aws_p = _ask("AWS_PROFILE (SSO/profile name - empty if later)", aws_p)
         aws_r = _ask("AWS region", aws_r or "gov-region-1")
         llm = _ask(
-            "LLM SHIM URL after SSM port-forward (e.g. http://127.0.0.1:8443/v1 — empty if not yet)",
+            "LLM SHIM URL after SSM port-forward (e.g. http://127.0.0.1:8443/v1 - empty if not yet)",
             llm,
         )
         opensearch_ep = _ask("OpenSearch endpoint for vectors (empty if not yet)", opensearch_ep)
@@ -379,7 +417,7 @@ def collect_answers(
         )
 
         print()
-        print("══ GodsEye (live progress HUD) ══════════════════════════")
+        print("== GodsEye (live progress HUD) ==========================")
         print("GodsEye shows the graph while the system builds. Always-on recommended.")
         print("If you close it later, say 'show GodsEye' in Codex to reopen.")
         ge_raw = _ask("Spin up GodsEye when we build? (Y/n)", "y" if ge is not False else "y")
@@ -461,7 +499,7 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
 
     def env_body_bash() -> str:
         lines = [
-            "# Generated by day1_first_start.py — do not commit secrets",
+            "# Generated by day1_first_start.py - do not commit secrets",
             f"export PB_PACKAGE_ROUTE={route}",
             "export PB_ENTERPRISE=1",
             f'export PB_PROGRAM_ID="{prog}"',
@@ -490,14 +528,14 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
             lines.append(f'export PB_JIRA_URL="{answers["jira_url"]}"')
         if answers.get("confluence_url"):
             lines.append(f'export PB_CONFLUENCE_URL="{answers["confluence_url"]}"')
-        # Tokens go to secrets_store — day1.env only references "stored" (never plaintext tokens)
+        # Tokens go to secrets_store - day1.env only references "stored" (never plaintext tokens)
         if answers.get("gitlab_token"):
-            lines.append("# GITLAB_TOKEN → secrets_store (not written plaintext)")
+            lines.append("# GITLAB_TOKEN -> secrets_store (not written plaintext)")
             lines.append("export PB_SECRETS_LOADED=1")
         if answers.get("jira_token"):
-            lines.append("# JIRA_TOKEN → secrets_store")
+            lines.append("# JIRA_TOKEN -> secrets_store")
         if answers.get("confluence_token"):
-            lines.append("# CONFLUENCE_TOKEN → secrets_store")
+            lines.append("# CONFLUENCE_TOKEN -> secrets_store")
         if answers.get("appgate_connected"):
             lines.append("export PB_APPGATE_OK=1")
         if answers.get("aws_profile"):
@@ -517,7 +555,7 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
 
     def env_body_ps1() -> str:
         lines = [
-            "# Generated by day1_first_start.py — do not commit secrets",
+            "# Generated by day1_first_start.py - do not commit secrets",
             f'$env:PB_PACKAGE_ROUTE = "{route}"',
             '$env:PB_ENTERPRISE = "1"',
             f'$env:PB_PROGRAM_ID = "{prog}"',
@@ -547,7 +585,7 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
         if answers.get("confluence_url"):
             lines.append(f'$env:PB_CONFLUENCE_URL = "{answers["confluence_url"]}"')
         if answers.get("gitlab_token") or answers.get("jira_token") or answers.get("confluence_token"):
-            lines.append("# Tokens in secrets_store — load with: python scripts/secrets_store.py load-env")
+            lines.append("# Tokens in secrets_store - load with: python scripts/secrets_store.py load-env")
             lines.append('$env:PB_SECRETS_LOADED = "1"')
         if answers.get("appgate_connected"):
             lines.append('$env:PB_APPGATE_OK = "1"')
@@ -566,7 +604,7 @@ def write_env_files(answers: dict[str, Any], kr: Path, bh: Path) -> list[str]:
             lines.append(f'$env:PB_NEPTUNE_ENDPOINT = "{answers["neptune_endpoint"]}"')
         return "\n".join(lines) + "\n"
 
-    # Store tokens in secrets_store (DPAPI/keyring/file) — never leave in plaintext env files
+    # Store tokens in secrets_store (DPAPI/keyring/file) - never leave in plaintext env files
     try:
         from secrets_store import put_secret
 
@@ -662,13 +700,13 @@ def write_codex_day1_prompt(answers: dict[str, Any], map_doc: dict[str, Any]) ->
     body = f"""---
 description: Private Brain Day-1 map (enterprise pilot)
 ---
-# Private Brain — Day-1 map (auto-generated)
+# Private Brain - Day-1 map (auto-generated)
 
 You are running **Private Brain as a Codex sideload** (`beastMode --enterprise`).
 Do **not** invent a separate product CLI.
 
 ## Route chosen
-- **Package route:** `{answers["route"]}` — {answers.get("route_label")}
+- **Package route:** `{answers["route"]}` - {answers.get("route_label")}
 - **Program:** `{answers["program_id"]}`
 - **Classification:** `{answers["classification"]}`
 - **Allowlist hosts:** {hosts}
@@ -678,11 +716,11 @@ Do **not** invent a separate product CLI.
 ## What you should do next in conversation
 1. Confirm the route still matches the user's network (Corporate Library vs AWS vs headless).
 2. If route is **corporate_library** or **aws** and index still has `REPLACE`, ask for the real approved index URL.
-3. Prefer **internal** GitLab/Jira/Confluence ingest only — never public OSS presets under enterprise.
+3. Prefer **internal** GitLab/Jira/Confluence ingest only - never public OSS presets under enterprise.
 4. After install: cite node_ids; respect quarantine / pilot_ops_ready.
-5. Corpus `pilot_ready` (public_ratio < 15%) needs **internal re-ingest** — do not claim purity is fixed by quarantine alone.
+5. Corpus `pilot_ready` (public_ratio < 15%) needs **internal re-ingest** - do not claim purity is fixed by quarantine alone.
 
-## Launch lines (user runs shell — you do not replace beastMode)
+## Launch lines (user runs shell - you do not replace beastMode)
 - Mac: `source day1.env && beastMode --enterprise`
 - Windows: `. .\\day1.env.ps1; beastMode --enterprise`
 
@@ -732,7 +770,7 @@ def persist_map(answers: dict[str, Any], written: list[str], prompt_path: str) -
             "internal re-ingest for pilot_ready",
         ],
     }
-    # never store full secrets-looking index with credentials in map — strip userinfo
+    # never store full secrets-looking index with credentials in map - strip userinfo
     idx = answers.get("pip_index_url") or ""
     if idx:
         doc["pip_index_host"] = re.sub(r"^https?://([^/]+@)?", "", idx).split("/")[0]
@@ -784,7 +822,7 @@ def persist_map(answers: dict[str, Any], written: list[str], prompt_path: str) -
 
 def print_banner(probe: dict[str, Any]) -> None:
     print("==============================================")
-    print(" Private Brain — Day-1 First Start (map)")
+    print(" Private Brain - Day-1 First Start (map)")
     print("==============================================")
     osinfo = probe.get("os") or {}
     codex = probe.get("codex") or {}
@@ -802,7 +840,7 @@ def print_banner(probe: dict[str, Any]) -> None:
 
 
 def find_golden_join() -> Path | None:
-    """Co-worker join pack — no secrets. Skip re-interview when present."""
+    """Co-worker join pack - no secrets. Skip re-interview when present."""
     candidates = []
     kit = os.environ.get("PB_KIT_ROOT")
     if kit:
@@ -855,6 +893,7 @@ def apply_golden_join(path: Path) -> dict[str, Any]:
 
 
 def main() -> int:
+    _force_utf8_stdio()
     ap = argparse.ArgumentParser(description="Private Brain intelligent Day-1 first start")
     ap.add_argument("--yes", "-y", action="store_true", help="non-interactive")
     ap.add_argument("--route", choices=sorted(ROUTES.keys()), default=None)
@@ -894,7 +933,7 @@ def main() -> int:
     if join_path and join_path.is_file():
         try:
             join_data = apply_golden_join(join_path)
-            args.yes = True  # noninteractive — map is known
+            args.yes = True  # noninteractive - map is known
             if not args.route and join_data.get("package_route") in ROUTES:
                 args.route = join_data["package_route"]
             if not args.program and join_data.get("program_id"):
@@ -915,11 +954,11 @@ def main() -> int:
                 args.llm_base_url = join_data["llm_shim_url"]
             if not args.hosts and join_data.get("allowlist_hosts"):
                 args.hosts = ",".join(join_data["allowlist_hosts"])
-            print(f"══ Co-worker join kit applied: {join_path}")
+            print(f"== Co-worker join kit applied: {join_path}")
             print("   Your sessions will ingest next. Put YOUR tokens in secrets_store.")
-            print("   Connect AWS when ready — same map. Daily: beastMode only.")
+            print("   Connect AWS when ready - same map. Daily: beastMode only.")
         except Exception as e:
-            print(f"WARN: golden_join failed ({e}) — falling back to interview", file=sys.stderr)
+            print(f"WARN: golden_join failed ({e}) - falling back to interview", file=sys.stderr)
 
     print_banner(probe)
     route = choose_route(probe, route=args.route, noninteractive=args.yes)
@@ -963,7 +1002,7 @@ def main() -> int:
     ey = write_enterprise_yaml(answers, bh)
     if ey:
         written.append(ey)
-    # prompt needs path — write map first stub then prompt
+    # prompt needs path - write map first stub then prompt
     map_stub = {"ts": _ts(), "path": str(bh / ".brain" / "state" / "day1_map.json")}
     prompt_path = write_codex_day1_prompt(answers, map_stub)
     written.append(prompt_path)
@@ -985,7 +1024,7 @@ def main() -> int:
     }
 
     print()
-    print("══ Day-1 map complete — golden surface ready ═══════════")
+    print("== Day-1 map complete - golden surface ready ===========")
     print(f" Route:     {answers['route']} ({answers['route_label']})")
     print(f" Program:   {answers['program_id']}")
     print(f" Class:     {answers['classification']}")
@@ -997,7 +1036,7 @@ def main() -> int:
     print(f" Codex:     {prompt_path}")
     print(f" Env:       day1.env / day1.env.ps1")
     if join_data:
-        print(" Join:      co-worker kit applied — next: organism ingests YOUR sessions")
+        print(" Join:      co-worker kit applied - next: organism ingests YOUR sessions")
     print(" Next:      organism / beastMode (no heal/doctor parade)")
     print(f" Mermaid:   {bh}/docs/MERMAID.md")
     if answers.get("ingest_url"):
@@ -1006,11 +1045,11 @@ def main() -> int:
     print(" Technical steps (DAY1 wrapper / beastMode --day1 run these next):")
     if (probe.get("os") or {}).get("is_windows"):
         print("   . .\\day1.env.ps1")
-        print("   SETUP → beastMode --enterprise --heal → --doctor")
+        print("   SETUP -> beastMode --enterprise --heal -> --doctor")
         print("   optional: multi-agent crawl GitLab/Jira/Confluence")
     else:
         print("   source day1.env  (or $PRIVATE_BRAIN_HOME/day1.env)")
-        print("   SETUP → beastMode --enterprise --heal → --doctor")
+        print("   SETUP -> beastMode --enterprise --heal -> --doctor")
         print("   optional: multi-agent crawl GitLab/Jira/Confluence")
     print("==============================================")
     # export markers for DAY1 shell

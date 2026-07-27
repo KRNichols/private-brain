@@ -26,6 +26,8 @@ env:
   PB_ZERO_SOFT: "1"
   PB_COVERAGE_FULL: "1"
   PB_COVERAGE_MIN: "20"
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
   PYGAME_HIDE_SUPPORT_PROMPT: "1"
   PYTHONPATH: ${{ github.workspace }}/scripts:${{ github.workspace }}
 

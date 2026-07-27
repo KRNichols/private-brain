@@ -172,6 +172,8 @@ jobs:
           PB_E2E_INSTALL_CODEX: "1"
           PB_E2E_CODEX_ATTEMPTS: "8"
           PB_ZERO_SOFT: "1"
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
           PYGAME_HIDE_SUPPORT_PROMPT: "1"
         run: |
           export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"

@@ -148,6 +148,8 @@ def stage_tree(tmp: Path) -> tuple[Path, Path, dict[str, str]]:
             "PB_NO_OPEN_CODEX": "1",
             "PB_GODSEYE": "0",
             "PB_NUCLEAR_HEADLESS": "1",
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
             "PYTHONPATH": str(brain / "scripts") + os.pathsep + str(brain),
         }
     )
@@ -628,8 +630,16 @@ def main() -> int:
         )
 
         day1 = brain / "scripts" / "day1_first_start.py"
-        r = _py(env, str(day1), "--yes", "--route", "headless", timeout=90, cwd=brain)
-        gate("N9/day1_headless", r.returncode == 0, (r.stderr or r.stdout or "")[:120])
+        env_d1 = dict(env)
+        env_d1["PYTHONUTF8"] = "1"
+        env_d1["PYTHONIOENCODING"] = "utf-8"
+        r = _py(env_d1, str(day1), "--yes", "--route", "headless", timeout=90, cwd=brain)
+        # ZERO SOFT: day1 must exit 0 on every OS (Windows charmap fixed in day1_first_start)
+        gate(
+            "N9/day1_headless",
+            r.returncode == 0,
+            f"rc={r.returncode} {(r.stderr or r.stdout or '')[-200:]}",
+        )
 
         fd = brain / "scripts" / "fire_drill.py"
         r = _py(env, str(fd), timeout=300, cwd=brain)
