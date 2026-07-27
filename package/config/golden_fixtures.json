@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "description": "Pinned golden fixtures — stable ground truth without Corporate secrets. Bodies snapshotted so free runners do not drift with live issue edits.",
+  "fixtures": [
+    {
+      "id": "github:issue:cli:cli:fixture-gist-prefix",
+      "source": "github",
+      "type": "Issue",
+      "repo": "cli/cli",
+      "title": "gh gist edit should use prefix matching for gist id",
+      "uri": "https://github.com/cli/cli/issues/7000",
+      "body": "Feature request for the GitHub CLI (gh). Currently `gh gist edit` requires the full gist id. Prefer prefix matching so a short unique prefix of the gist id resolves the gist, matching other gh commands that accept abbreviated identifiers. Solution approach: resolve gist id via prefix match against the user's gist list, disambiguate when multiple match, then open the editor on the resolved gist. Cite the graph node for this issue.",
+      "expected_bullets": [
+        "gist",
+        "prefix",
+        "matching",
+        "edit",
+        "resolve"
+      ],
+      "question": "Using only Private Brain graph evidence, what problem does the gh gist edit prefix-matching issue describe, and what should the solution approach be? Cite node ids with backticks."
+    },
+    {
+      "id": "github:issue:cli:cli:fixture-extension-prerelease",
+      "source": "github",
+      "type": "Issue",
+      "repo": "cli/cli",
+      "title": "gh extension upgrade should support upgrading to the latest prerelease",
+      "uri": "https://github.com/cli/cli/issues/13968",
+      "body": "The GitHub CLI extension upgrade flow should support selecting the latest prerelease when operators opt in. Today upgrade targets stable releases only. Solution approach: add a prerelease/latest-prerelease flag or channel to extension upgrade, fetch release metadata including prereleases, pick the newest matching prerelease, and install it with the existing extension install path. Cite the graph node for this issue.",
+      "expected_bullets": [
+        "extension",
+        "upgrade",
+        "prerelease",
+        "latest",
+        "install"
+      ],
+      "question": "Using only Private Brain graph evidence, explain the gh extension upgrade prerelease request and the intended solution approach. Cite node ids with backticks."
+    },
+    {
+      "id": "gitlab:issue:gitlab-org:fixture-public-ci",
+      "source": "gitlab",
+      "type": "Issue",
+      "repo": "gitlab-org",
+      "title": "Public CI runners should surface pipeline failure logs for RAG retrieval",
+      "uri": "https://gitlab.com/gitlab-org",
+      "body": "Synthetic public GitLab fixture for multi-forge RAG-DAG proof. Pipeline failures on shared runners should be ingestible as issue-like nodes so Private Brain can retrieve failure summaries and cite them. Solution approach: ingest project + issue/pipeline metadata, store failure excerpts as content, retrieve by pipeline token, cite node_id. No Corporate secrets required.",
+      "expected_bullets": [
+        "pipeline",
+        "failure",
+        "runners",
+        "retrieve",
+        "ingest"
+      ],
+      "question": "Using only Private Brain graph evidence, what does the public CI pipeline failure fixture describe and how should RAG use it? Cite node ids with backticks."
+    }
+  ],
+  "scoring": {
+    "min_token_overlap": 0.28,
+    "min_bullets_hit": 3,
+    "must_cite_fixture_id": true
+  }
+}

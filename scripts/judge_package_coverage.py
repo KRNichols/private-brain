@@ -312,6 +312,8 @@ def main() -> int:
             "lint_sanitized_branding.py",
             "rag_dag_e2e.py",
             "nuclear_day1_kingdom_e2e.py",
+            "corporate_golden_dryrun_e2e.py",
+            "zero_soft.py",
         ):
             sp = SCRIPTS / script
             if sp.is_file():
@@ -395,8 +397,7 @@ def main() -> int:
         print(f"    {pct:5.1f}%  {hit}/{stmt}  {name}")
 
     # ZERO SOFT: every file must have >0%; mean floor ratchets via PB_COVERAGE_MIN
-    # Full e2e under coverage raises mean (~25% today) — floor 20 so green means real exercise
-    min_cov = float(os.environ.get("PB_COVERAGE_MIN", "20"))
+    min_cov = float(os.environ.get("PB_COVERAGE_MIN", "25"))
     report = {
         "overall_mean_pct": round(overall, 2),
         "min_required": min_cov,

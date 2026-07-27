@@ -131,7 +131,15 @@ def phase_sessions(report: dict[str, Any], quiet: bool, *, force: bool = True) -
         )
     except Exception as e:
         report["sessions"] = {"ok": False, "error": str(e)[:240]}
-        _log(f"sessions: soft-fail {e}", quiet)
+        try:
+            from zero_soft import soft_fail_ok  # type: ignore
+
+            allow = soft_fail_ok()
+        except Exception:
+            allow = os.environ.get("PB_ZERO_SOFT", "0") not in ("1", "true", "yes")
+        _log(f"sessions: {'soft-fail' if allow else 'HARD-FAIL'} {e}", quiet)
+        if not allow:
+            report["hard_fail"] = report.get("hard_fail") or "sessions"
 
 
 # ── PHASE 1: MAP / INTERVIEW ───────────────────────────────────────

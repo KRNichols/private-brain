@@ -1,0 +1,36 @@
+{
+  "schema": "private-brain.coworker_join.v1",
+  "ts": "2026-07-27T00:00:00Z",
+  "program_id": "CORP-DRYRUN-PUBLIC",
+  "classification": "INTERNAL",
+  "package_route": "headless",
+  "pip_index_url": "",
+  "aws_region": "gov-region-1",
+  "aws_profile_hint": "",
+  "llm_shim_url": "",
+  "opensearch_endpoint": "",
+  "neptune_endpoint": "",
+  "gitlab_url": "https://gitlab.example.corp/group/project",
+  "jira_url": "https://jira.example.corp",
+  "confluence_url": "https://wiki.example.corp",
+  "allowlist_hosts": [
+    "gitlab.example.corp",
+    "jira.example.corp",
+    "wiki.example.corp",
+    "protected-gateway.example.corp"
+  ],
+  "models": {
+    "edge": "gpt-5.1",
+    "cloud": "enterprise-frontier-model"
+  },
+  "max_agents": 16,
+  "godseye_default": "0",
+  "human_steps": [
+    "Install Codex; keep your own .codex/sessions",
+    "Place this file as golden_join.json before START",
+    "Put YOUR tokens in secrets_store only (not this file)",
+    "AppGate then internal crawl",
+    "Daily: beastMode only"
+  ],
+  "_note": "NO SECRETS. Dry-run fixture until Corporate golden secrets are provided."
+}

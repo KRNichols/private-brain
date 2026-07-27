@@ -780,14 +780,27 @@ def main() -> int:
     )
     if args.json:
         print(json.dumps(r, indent=2, default=str))
-    # soft success if sessions phase ran or anything found
+    # Default soft: discovery never blocks interactive Day-1.
+    # Under PB_ZERO_SOFT / CI: hard-fail if sessions phase missing and nothing found.
     phases = r.get("phases") or {}
     sess_ok = (phases.get("sessions") or {}).get("ok")
     any_found = any(
         (phases.get(k) or {}).get("found")
         for k in ("corporate_library", "protected_gateway", "gitlab_discover")
     ) or (phases.get("neo4j") or {}).get("profiled") or (phases.get("neo4j") or {}).get("found")
-    return 0 if sess_ok or any_found or args.json else 0  # always 0 soft — discovery never hard-fails Day-1
+    try:
+        from zero_soft import zero_soft_enabled  # type: ignore
+
+        hard = zero_soft_enabled()
+    except Exception:
+        hard = os.environ.get("PB_ZERO_SOFT", "").strip() in ("1", "true", "yes")
+    if hard:
+        if args.json and (sess_ok or any_found or r.get("ok")):
+            return 0
+        if sess_ok or any_found or r.get("ok"):
+            return 0
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -1031,7 +1031,7 @@ def doctor_enterprise() -> dict[str, Any]:
     except Exception as e:
         add("hooks_targets_exist", True, f"skip:{e}")
 
-    # Soft: raw host purity strict; hard: parity, chain, ops quarantine, hooks
+    # Soft names: product default allows Corporate-unknown soft; zero-soft empties most.
     soft_names = {
         "corpus_public_ratio",
         "corporate_library_approved_source",
@@ -1045,6 +1045,13 @@ def doctor_enterprise() -> dict[str, Any]:
     pur_ok = any(c.get("name") == "corpus_pilot_ready" and c.get("ok") for c in checks)
     if pur_ok:
         soft_names = soft_names | {"corpus_public_ratio"}
+    try:
+        from zero_soft import doctor_soft_names, zero_soft_enabled  # type: ignore
+
+        if zero_soft_enabled():
+            soft_names = doctor_soft_names(soft_names)
+    except Exception:
+        pass
     ok = all(c["ok"] for c in checks if c["name"] not in soft_names)
     soft = [c for c in checks if c["name"] in soft_names and not c["ok"]]
     return {

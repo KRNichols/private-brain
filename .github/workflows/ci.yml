@@ -245,6 +245,77 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
 
+  corporate-golden-dryrun:
+    name: corporate golden dry-run (no secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dry-run corporate golden_join path
+        env:
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_ZERO_SOFT: "1"
+          PB_NONINTERACTIVE: "1"
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/corporate_golden_dryrun_e2e.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corporate-golden-dryrun-${{ github.sha }}
+          path: |
+            e2e-reports/**
+            .brain/state/CORPORATE_GOLDEN_DRYRUN_E2E.json
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  live-codex-golden:
+    name: live Codex golden (when secrets present)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Auto-arms when Corporate/OpenAI secrets land — no fake green without them
+    if: ${{ secrets.OPENAI_API_KEY != '' || secrets.CODEX_API_KEY != '' || secrets.CHATGPT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Codex CLI
+        run: |
+          set -e
+          npm install -g @openai/codex@latest
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+          command -v codex
+          codex --version
+      - name: Live codex exec golden (HARD)
+        env:
+          PB_ENTERPRISE: "1"
+          PB_CI: "1"
+          PB_ZERO_SOFT: "1"
+          PB_E2E_CODEX_EXEC: "1"
+          PB_E2E_INSTALL_CODEX: "1"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+        run: |
+          set -e
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          # Prefer API key login path if codex supports env auth
+          python scripts/rag_issue_golden_e2e.py
+          python scripts/codex_cli_smoke.py
+
   sanitize-branding:
     name: sanitize branding lint
     runs-on: ubuntu-latest
@@ -271,7 +342,7 @@ jobs:
         env:
           PB_ENTERPRISE: "1"
           PB_CI: "1"
-          PB_COVERAGE_MIN: "15"
+          PB_COVERAGE_MIN: "25"
           PB_COVERAGE_FULL: "1"
           PB_GITLAB_CRAWL: "0"
         run: |

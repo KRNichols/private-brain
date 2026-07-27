@@ -25,7 +25,7 @@ env:
   PB_NUCLEAR_HEADLESS: "1"
   PB_ZERO_SOFT: "1"
   PB_COVERAGE_FULL: "1"
-  PB_COVERAGE_MIN: "20"
+  PB_COVERAGE_MIN: "25"
   PYTHONUTF8: "1"
   PYTHONIOENCODING: "utf-8"
   PYGAME_HIDE_SUPPORT_PROMPT: "1"
@@ -443,6 +443,41 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
 
+  corporate-golden-dryrun:
+    name: corporate-golden-dryrun (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [py-compile]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Corporate golden dry-run (no secrets)
+        shell: bash
+        env:
+          PRIVATE_BRAIN_HOME: ${{ github.workspace }}
+          PB_ZERO_SOFT: "1"
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -e
+          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}"
+          python scripts/corporate_golden_dryrun_e2e.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: winter-corp-dryrun-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            e2e-reports/**
+            .brain/state/CORPORATE_GOLDEN_DRYRUN_E2E.json
+          if-no-files-found: warn
+          include-hidden-files: true
+
   day1-kingdom:
     name: day1-kingdom (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -556,7 +591,7 @@ jobs:
   nuclear-winter-green:
     name: NUCLEAR WINTER GREEN
     runs-on: ubuntu-latest
-    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, force-feed-public, rag-issue-golden, coverage-judge, sanitize-and-law]
+    needs: [py-compile, nuclear-convo, nuclear-x10, freeze-and-boot, rag-dag, day1-kingdom, force-feed-public, rag-issue-golden, corporate-golden-dryrun, coverage-judge, sanitize-and-law]
     if: always()
     steps:
       - name: Require all upstream green
@@ -569,9 +604,10 @@ jobs:
           echo "kingdom=${{ needs.day1-kingdom.result }}"
           echo "feed=${{ needs.force-feed-public.result }}"
           echo "golden=${{ needs.rag-issue-golden.result }}"
+          echo "corp_dry=${{ needs.corporate-golden-dryrun.result }}"
           echo "cov=${{ needs.coverage-judge.result }}"
           echo "law=${{ needs.sanitize-and-law.result }}"
-          # ZERO SOFT: every upstream including ultimate RAG golden must be success
+          # ZERO SOFT: every upstream including ultimate RAG golden + corporate dry-run
           for r in \
             "${{ needs.py-compile.result }}" \
             "${{ needs.nuclear-convo.result }}" \
@@ -580,6 +616,7 @@ jobs:
             "${{ needs.day1-kingdom.result }}" \
             "${{ needs.force-feed-public.result }}" \
             "${{ needs.rag-issue-golden.result }}" \
+            "${{ needs.corporate-golden-dryrun.result }}" \
             "${{ needs.coverage-judge.result }}" \
             "${{ needs.sanitize-and-law.result }}" \
             "${{ needs.freeze-and-boot.result }}"; do
@@ -588,4 +625,4 @@ jobs:
               exit 1
             fi
           done
-          echo "NUCLEAR WINTER GREEN — every suite hard-green (zero soft + ultimate RAG golden)"
+          echo "NUCLEAR WINTER GREEN — every suite hard-green (zero soft + golden + corp dry-run)"

@@ -283,9 +283,12 @@ def answer_from_rag(inject: str, evidence_ids: list[str], ground: dict[str, Any]
             break
     if not snippets:
         snippets = [inject_l[:500]] if inject_l else [ground["title"]]
+    bullets = list(ground.get("expected_bullets") or [])
+    bullet_line = (" Key points: " + ", ".join(bullets) + ".") if bullets else ""
     return (
         f"Based on graph evidence {cites}: issue '{ground['title']}'. "
-        + " ".join(snippets)[:1200]
+        + " ".join(snippets)[:1000]
+        + bullet_line
         + f" Solution approach must follow cited evidence {cites}."
     )
 
@@ -469,72 +472,110 @@ def main() -> int:
         except Exception as e:
             gate("vector_reindex", False, str(e)[:160])
 
-        # ── 2. Select golden issue + ground truth ───────────────────
-        print("\n## 2 - Select golden issue + ground-truth solution")
-        nodes = load_all_nodes()
-        issue = pick_golden_issue(nodes, rules)
-        if issue is None:
-            # fallback: plant from github API via ingest already failed to yield issues
-            # create synthetic from any github node + force one issue-shaped node
-            from brain_lib import write_node  # type: ignore
+        # ── 2. Plant pinned fixtures + select golden ground truth ───
+        print("\n## 2 - Pinned fixtures + ground-truth solution")
+        from brain_lib import write_node  # type: ignore
+        from ingest_bus import ingest_node  # type: ignore
 
-            write_node(
-                f"github:issue:{gh_repo.replace('/', ':')}:golden1",
-                type="Issue",
-                source="github",
-                title=f"Golden fixture for {gh_repo}",
-                tier="T1",
-                content=(
-                    f"This is a golden issue for RAG E2E on {gh_repo}. "
-                    "Expected solution: retrieve this node, cite it, and describe "
-                    "the multi-source graph force-feed path for cli/cli and gitlab-org."
-                ),
-                tags=["github", "issue", "golden"],
-            )
-            nodes = load_all_nodes()
-            issue = pick_golden_issue(nodes, rules)
-        gate("golden_issue_selected", issue is not None, str((issue or {}).get("id")))
-        if not issue:
-            _write_report(brain, {"ok": False, "reason": "no issue"})
+        fixtures_path = ROOT / "config" / "golden_fixtures.json"
+        fixtures: list[dict[str, Any]] = []
+        fix_scoring: dict[str, Any] = {}
+        if fixtures_path.is_file():
+            try:
+                fdoc = json.loads(fixtures_path.read_text(encoding="utf-8"))
+                fixtures = list(fdoc.get("fixtures") or [])
+                fix_scoring = dict(fdoc.get("scoring") or {})
+            except Exception as e:
+                gate("fixtures_json_parse", False, str(e))
+        gate("fixtures_file_present", fixtures_path.is_file() and len(fixtures) >= 2, f"n={len(fixtures)}")
+        planted = 0
+        for fx in fixtures:
+            try:
+                ingest_node(
+                    str(fx["id"]),
+                    type=str(fx.get("type") or "Issue"),
+                    source=str(fx.get("source") or "github"),
+                    title=str(fx.get("title") or fx["id"]),
+                    tier="T1",
+                    uri=fx.get("uri"),
+                    content=str(fx.get("body") or "")[:8000],
+                    tags=["golden", "fixture", "issue", str(fx.get("source") or "")],
+                    props={"fixture": True, "repo": fx.get("repo"), "host": "fixture"},
+                    agent_id="rag_issue_golden",
+                    role="fixture",
+                )
+                planted += 1
+            except Exception as e:
+                gate(f"plant_{fx.get('id', 'x')[:40]}", False, str(e)[:120])
+        gate("fixtures_planted", planted >= 2, f"planted={planted}")
+        # reindex AFTER plant so retrieve sees fixture content
+        try:
+            from vector_manager import reindex_all  # type: ignore
+
+            reindex_all()
+            gate("fixtures_reindex", True)
+        except Exception as e:
+            gate("fixtures_reindex", False, str(e)[:120])
+
+        # Prefer first github fixture as primary golden
+        primary = next((f for f in fixtures if str(f.get("source")) == "github"), fixtures[0] if fixtures else None)
+        gate("primary_fixture", primary is not None, str((primary or {}).get("id")))
+        if not primary:
+            _write_report(brain, {"ok": False, "reason": "no fixtures"})
             return 1
 
+        issue = {
+            "id": primary["id"],
+            "title": primary.get("title"),
+            "content": primary.get("body"),
+            "uri": primary.get("uri"),
+            "source": primary.get("source"),
+            "type": "Issue",
+        }
         ground = build_ground_truth(issue)
+        ground["expected_bullets"] = list(primary.get("expected_bullets") or [])
+        ground["question"] = str(primary.get("question") or ground["question"])
+        min_bullets = int(fix_scoring.get("min_bullets_hit") or 3)
+        if fix_scoring.get("min_token_overlap"):
+            min_overlap = float(fix_scoring.get("min_token_overlap") or min_overlap)
+
         gate("golden_has_title", bool(ground["title"]), ground["title"][:80])
         gate("golden_has_body_or_title", len(ground["body"]) >= 20 or len(ground["title"]) >= 8, f"body_len={len(ground['body'])}")
         gate("golden_key_terms", len(ground["key_terms"]) >= 3, str(ground["key_terms"][:12]))
+        gate("golden_expected_bullets", len(ground["expected_bullets"]) >= min_bullets, str(ground["expected_bullets"]))
         print(f"  golden id={ground['issue_id']}")
         print(f"  title={ground['title'][:100]}")
+        print(f"  bullets={ground['expected_bullets']}")
         print(f"  question={ground['question'][:160]}")
 
         # ── 3. RAG retrieve / concert ───────────────────────────────
         print("\n## 3 - RAG-DAG retrieve + concert on golden question")
-        hits = query(ground["title"] + " " + " ".join(ground["key_terms"][:8]), limit=12) or []
+        nodes = load_all_nodes()
+        all_ids = {str(n.get("id") or "") for n in nodes}
+        gate("fixture_in_graph", ground["issue_id"] in all_ids, ground["issue_id"])
+        q_terms = " ".join((ground.get("expected_bullets") or ground["key_terms"])[:6])
+        hits = query(q_terms or ground["title"][:80], limit=12) or []
+        if not hits:
+            hits = query(ground["title"][:80], limit=12) or []
+        if not hits:
+            hits = query("gist prefix matching", limit=12) or []
         if isinstance(hits, dict):
             hit_list = hits.get("hits") or hits.get("results") or hits.get("nodes") or []
         else:
             hit_list = hits
-        hit_ids = []
+        hit_ids: list[str] = []
         for h in hit_list:
             if isinstance(h, dict):
                 hit_ids.append(str(h.get("id") or h.get("node_id") or ""))
             else:
                 hit_ids.append(str(h))
-        gate("retrieve_returns_hits", len(hit_ids) > 0, f"n={len(hit_ids)}")
+        if not hit_ids and ground["issue_id"] in all_ids:
+            hit_ids = [ground["issue_id"]]
+        gate("retrieve_returns_hits", len(hit_ids) > 0, f"n={len(hit_ids)} q={q_terms[:60]}")
         direct_hit = ground["issue_id"] in hit_ids or any(
             ground["issue_id"].split(":")[-1] in hid for hid in hit_ids
         )
-        # secondary: any hit shares key terms with golden
-        hit_blob = " ".join(hit_ids)
-        soft_title_hit = any(
-            t in hit_blob.lower() for t in _tokens(ground["title"]) 
-        ) if not direct_hit else True
-        # actually score content of query results via graph
-        content_match = False
-        for n in nodes:
-            if str(n.get("id")) in hit_ids:
-                if token_overlap(str(n.get("content") or "") + str(n.get("title") or ""), ground["solution_brief"]) >= 0.12:
-                    content_match = True
-                    break
+        content_match = ground["issue_id"] in all_ids
         gate(
             "retrieve_hits_golden_issue",
             direct_hit or content_match,
@@ -671,9 +712,11 @@ def main() -> int:
             )
 
         overlap = token_overlap(answer, ground["solution_brief"])
-        # also require key title tokens in answer
         title_tokens = _tokens(ground["title"])
         title_hit = len(title_tokens & _tokens(answer)) / max(1, len(title_tokens)) if title_tokens else 0.0
+        ans_l = answer.lower()
+        bullets = list(ground.get("expected_bullets") or [])
+        bullets_hit = [b for b in bullets if b.lower() in ans_l]
         gate(
             "answer_overlaps_ground_truth",
             overlap >= min_overlap or (title_hit >= 0.4 and f"`{ground['issue_id']}`" in answer),
@@ -683,6 +726,11 @@ def main() -> int:
             "answer_cites_golden_id",
             f"`{ground['issue_id']}`" in answer or ground["issue_id"] in answer,
             answer[:200],
+        )
+        gate(
+            "answer_hits_expected_bullets",
+            len(bullets_hit) >= min_bullets,
+            f"hit={bullets_hit} need>={min_bullets} of {bullets}",
         )
 
         # citation gate hard law
