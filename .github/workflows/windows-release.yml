@@ -32,6 +32,7 @@ jobs:
       PB_GODSEYE: "0"
       PB_NUCLEAR_HEADLESS: "1"
       PB_FORCE_FEED_TINY: "1"
+      PB_ALLOW_PUBLIC_INGEST: "1"
       PB_MAX_AGENTS: "64"
       PB_SWARM_AGENTS: "64"
       PB_SWARM_SMOKE_AGENTS: "8"

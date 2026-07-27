@@ -942,6 +942,14 @@ def main() -> int:
 
     # Enterprise policy (Corporate Library pilot): block public presets/hosts even for direct Python CLI.
     # Fail closed under PB_ENTERPRISE — never swallow policy errors.
+    # CI exception: PB_ALLOW_PUBLIC_INGEST=1 (force-feed / Windows MVP public OSS only).
+    if (os.environ.get("PB_ALLOW_PUBLIC_INGEST") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        print("PB_ALLOW_PUBLIC_INGEST=1 — public OSS ingest override active", file=sys.stderr)
     try:
         from enterprise import assert_ingest_allowed
     except Exception as e:
@@ -951,6 +959,11 @@ def main() -> int:
             "yes",
             "on",
             "enterprise",
+        } and (os.environ.get("PB_ALLOW_PUBLIC_INGEST") or "").strip().lower() not in {
+            "1",
+            "true",
+            "yes",
+            "on",
         }:
             print(
                 f"ERROR: enterprise policy required under PB_ENTERPRISE but unavailable: {e}",

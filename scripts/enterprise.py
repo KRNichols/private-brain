@@ -65,6 +65,9 @@ def brain_root() -> Path:
 
 def is_enterprise() -> bool:
     v = (os.environ.get("PB_ENTERPRISE") or "").strip().lower()
+    # Explicit off wins over flag file (CI public-ingest windows, temporary lab off)
+    if v in {"0", "false", "no", "off"}:
+        return False
     if v in {"1", "true", "yes", "on", "enterprise"}:
         return True
     # Flag file written by SessionStart / install (Windows first boot without shell env)
@@ -287,6 +290,19 @@ def assert_ingest_allowed(
     preset: str | None = None,
 ) -> dict[str, Any]:
     """Raise PermissionError if enterprise policy blocks this harvest."""
+    # CI / force-feed public OSS path — explicit opt-in only (never default open)
+    if (os.environ.get("PB_ALLOW_PUBLIC_INGEST") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return {
+            "ok": True,
+            "enterprise": is_enterprise(),
+            "public_ingest_override": True,
+            "program_id": program_id() if is_enterprise() else "",
+        }
     if not is_enterprise():
         return {"ok": True, "enterprise": False}
     pol = load_policy()

@@ -65,6 +65,9 @@ def brain_root() -> Path:
 
 def is_enterprise() -> bool:
     v = (os.environ.get("PB_ENTERPRISE") or "").strip().lower()
+    # Explicit off wins over flag file (CI public-ingest windows, temporary lab off)
+    if v in {"0", "false", "no", "off"}:
+        return False
     if v in {"1", "true", "yes", "on", "enterprise"}:
         return True
     # Flag file written by SessionStart / install (Windows first boot without shell env)

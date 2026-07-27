@@ -468,16 +468,36 @@ def phase7_crawlers(brain: Path) -> None:
     gate("crawl_public_run", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
 
 
+def _node_count(brain: Path, env: dict[str, str]) -> int:
+    r = _run(
+        [
+            sys.executable,
+            "-c",
+            "from brain_lib import status; print(int((status() or {}).get('node_count') or 0))",
+        ],
+        env=env,
+        timeout=60,
+    )
+    try:
+        return int((r.stdout or "0").strip().splitlines()[-1])
+    except Exception:
+        return -1
+
+
 def phase8_ingestors(brain: Path) -> None:
     print("\n=== P8 INGESTORS ===", flush=True)
     env = os.environ.copy()
     env["PRIVATE_BRAIN_HOME"] = str(brain)
     env["PYTHONPATH"] = str(brain / "scripts") + os.pathsep + str(brain)
-    env["PB_ENTERPRISE"] = "0"  # allow public OSS ingest on CI
+    # CI public OSS path — ALLOW_PUBLIC is the only legal override (enterprise flag file may exist)
+    env["PB_ALLOW_PUBLIC_INGEST"] = "1"
+    env["PB_ENTERPRISE"] = "1"  # keep enterprise law; allowlist via ALLOW_PUBLIC
     env["GITHUB_TOKEN"] = os.environ.get("GITHUB_TOKEN", "")
     # inter-repo wait law
-    inter = float(os.environ.get("PB_GITLAB_INTER_REPO_SEC", "15") or "15")
+    inter = float(os.environ.get("PB_GITLAB_INTER_REPO_SEC", "0") or "0")
     gate("gitlab_inter_repo_cap_le_15", inter <= 15.0, f"PB_GITLAB_INTER_REPO_SEC={inter}")
+
+    before = _node_count(brain, env)
 
     gh = brain / "scripts" / "github_ingest.py"
     if gh.is_file():
@@ -488,22 +508,31 @@ def phase8_ingestors(brain: Path) -> None:
                 "--repo",
                 "actions/checkout",
                 "--max-issues",
-                "3",
+                "5",
                 "--max-prs",
-                "1",
+                "2",
+                "--json",
             ],
             env=env,
             timeout=300,
         )
-        gate("github_ingest_tiny", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
+        out = (r.stdout or "") + "\n" + (r.stderr or "")
+        blocked = "blocked" in out.lower() and "enterprise" in out.lower()
+        after_gh = _node_count(brain, env)
+        gate(
+            "github_ingest_tiny",
+            r.returncode == 0 and not blocked and after_gh > before,
+            f"rc={r.returncode} nodes {before}->{after_gh} blocked={blocked} tail={out[-240:]}",
+        )
     else:
         gate("github_ingest_tiny", False, "github_ingest.py missing")
 
+    mid = _node_count(brain, env)
     gl = brain / "scripts" / "gitlab_ingest.py"
     if gl.is_file():
         r = _run([sys.executable, str(gl), "--help"], env=env, timeout=60)
         gate("gitlab_ingest_help", r.returncode == 0, (r.stdout or "")[:100])
-        # light public gitlab if allowed
+        # Real public gitlab shallow ingest — must succeed (no soft-pass on enterprise block)
         r2 = _run(
             [
                 sys.executable,
@@ -511,19 +540,32 @@ def phase8_ingestors(brain: Path) -> None:
                 "--url",
                 "https://gitlab.com/gitlab-org/gitlab-runner",
                 "--max-projects",
-                "1",
+                "2",
                 "--shallow",
+                "--json",
             ],
             env=env,
-            timeout=300,
+            timeout=420,
         )
+        out2 = (r2.stdout or "") + "\n" + (r2.stderr or "")
+        blocked2 = "policy blocked" in out2.lower() or (
+            "blocks public host" in out2.lower()
+        )
+        after_gl = _node_count(brain, env)
         gate(
             "gitlab_ingest_tiny",
-            r2.returncode == 0 or "enterprise" in (r2.stderr or r2.stdout or "").lower(),
-            (r2.stdout or r2.stderr or "")[-300:],
+            r2.returncode == 0 and not blocked2 and after_gl > mid,
+            f"rc={r2.returncode} nodes {mid}->{after_gl} blocked={blocked2} tail={out2[-280:]}",
+        )
+        gate(
+            "gitlab_ingest_not_soft_block",
+            not blocked2,
+            "enterprise must not soft-block public CI ingest when PB_ALLOW_PUBLIC_INGEST=1",
         )
     else:
         gate("gitlab_ingest_help", False, "missing")
+        gate("gitlab_ingest_tiny", False, "missing")
+        gate("gitlab_ingest_not_soft_block", False, "missing")
 
 
 def phase9_agents(brain: Path) -> None:
