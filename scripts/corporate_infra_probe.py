@@ -118,7 +118,7 @@ def collect_targets() -> dict[str, list[str]]:
                     add("jira", f"https://{h}")
                 if "confluence" in hl or "wiki" in hl:
                     add("confluence", f"https://{h}")
-                if "package" in hl or "gateway" in hl or "artifactory" in hl or "corporate" in hl:
+                if "package" in hl or "gateway" in hl or "library" in hl or "pip-index" in hl:
                     add("package_index", f"https://{h}")
 
     try:
