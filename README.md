@@ -486,7 +486,7 @@ Report: `.brain/state/PACKAGE_COVERAGE_JUDGE.json`
 ## Ready to test — developer issues closeout
 
 This section is the **test plan + orchestration brief** after the developer-issues handoff work.  
-**Pin:** Windows Release MVP green on `windows-ready-364093e` (or newer `windows-ready-*` on [Releases](https://github.com/KRNichols/private-brain/releases)).
+**Pin:** Windows Release MVP green on `windows-ready-e132df6` (or newer `windows-ready-*` on [Releases](https://github.com/KRNichols/private-brain/releases)). Use the **Latest** READY tag only.
 
 ### 10× readiness audit (what “ready to test” means)
 
