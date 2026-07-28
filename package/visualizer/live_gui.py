@@ -1048,30 +1048,45 @@ def ellipsize(font, text: str, max_w: int) -> str:
 
 
 def wrap_text(font, text: str, max_w: int, max_lines: int = 4) -> list[str]:
-    """Word-wrap text to max_w; hard-ellipsize last line if needed."""
+    """Word-wrap text to max_w pixels; hard-ellipsize overflow; never exceed max_w."""
     t = str(text or "").strip()
     if not t or max_w < 20:
         return []
     words = t.split()
+    if not words:
+        return [ellipsize(font, t, max_w)]
     lines: list[str] = []
     cur = ""
     for w in words:
-        trial = (cur + " " + w).strip()
+        # hard-break ultra-long tokens (paths, hashes)
+        if font.size(w)[0] > max_w:
+            if cur:
+                lines.append(cur)
+                cur = ""
+                if len(lines) >= max_lines:
+                    break
+            lines.append(ellipsize(font, w, max_w))
+            if len(lines) >= max_lines:
+                break
+            continue
+        trial = (cur + " " + w).strip() if cur else w
         if font.size(trial)[0] <= max_w:
             cur = trial
         else:
             if cur:
                 lines.append(cur)
-            cur = w if font.size(w)[0] <= max_w else ellipsize(font, w, max_w)
+            cur = w
             if len(lines) >= max_lines:
                 break
     if cur and len(lines) < max_lines:
         lines.append(cur)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-    if lines:
-        lines[-1] = ellipsize(font, lines[-1], max_w)
-    return lines
+    # Guarantee every line fits
+    out: list[str] = []
+    for i, ln in enumerate(lines[:max_lines]):
+        out.append(ellipsize(font, ln, max_w))
+    return out
 
 
 def rounded_panel(screen, rect: pygame.Rect, fill=PANEL, border=BORDER, radius=10):
@@ -1090,63 +1105,82 @@ def flyout(
     H: int,
     title: str = "",
     *,
-    max_line: int = 96,
+    max_line: int = 96,  # kept for callers; wrap is pixel-based now
     max_width: int = 420,
+    max_height: int = 0,  # 0 = auto up to ~half screen
 ) -> None:
-    """Draw a floating info card near the cursor (clamped to screen)."""
+    """Draw a floating info card near the cursor (clamped; text never overflows)."""
     pad = 10
-    rows = ([title] if title else []) + lines
-    if not rows:
-        return
-    # Soft wrap long lines for stage encyclopedia
+    # Panel width first so we can wrap to pixel width
+    tw = min(max_width, max(220, W - 24))
+    text_max_w = max(40, tw - pad * 2)
+    max_h = max_height or max(160, min(H - 24, H * 2 // 3))
+
+    # Build wrapped rows with pixel word-wrap (never draw past text_max_w)
     wrapped: list[tuple[str, bool]] = []  # (text, is_title)
-    for i, row in enumerate(rows):
-        is_title = i == 0 and bool(title)
-        f = font if is_title else font_xs
+    if title:
+        for chunk in wrap_text(font, str(title).replace("\n", " "), text_max_w, max_lines=3):
+            wrapped.append((chunk, True))
+    for row in lines:
         text = (row or "").replace("\n", " ").strip()
         if not text:
             continue
-        # greedy wrap by character budget
-        while text:
-            chunk = text[:max_line]
-            if len(text) > max_line:
-                # break on space if possible
-                sp = chunk.rfind(" ")
-                if sp > 40:
-                    chunk = chunk[:sp]
-            wrapped.append((chunk, is_title))
-            text = text[len(chunk) :].lstrip()
-            is_title = False
+        for chunk in wrap_text(font_xs, text, text_max_w, max_lines=6):
+            wrapped.append((chunk, False))
     if not wrapped:
         return
-    widths = [
-        (font if is_t else font_xs).size(r)[0] for r, is_t in wrapped
-    ]
-    tw = min(max_width, max(widths) + pad * 2)
-    th = pad * 2 + sum(
-        (font.get_height() + 4) if is_t else (font_xs.get_height() + 3) for _, is_t in wrapped
-    )
+
+    # Height from lines; clamp and drop overflow with a final "…" line
+    line_gap_title = 4
+    line_gap_body = 3
+    th = pad * 2
+    for _, is_t in wrapped:
+        th += (font.get_height() + line_gap_title) if is_t else (font_xs.get_height() + line_gap_body)
+    if th > max_h:
+        # keep as many lines as fit, last becomes ellipsis
+        th = pad * 2
+        kept: list[tuple[str, bool]] = []
+        for row, is_t in wrapped:
+            add = (font.get_height() + line_gap_title) if is_t else (font_xs.get_height() + line_gap_body)
+            if th + add + font_xs.get_height() + line_gap_body > max_h:
+                kept.append(("…", False))
+                th += font_xs.get_height() + line_gap_body
+                break
+            kept.append((row, is_t))
+            th += add
+        wrapped = kept
+
+    # Position: prefer below-right of cursor; flip if off-screen
     x = mx + 16
     y = my + 16
     if x + tw > W - 8:
-        x = mx - tw - 12
+        x = max(8, mx - tw - 12)
     if y + th > H - 8:
-        y = H - th - 8
-    x = max(x, 8)
-    y = max(y, 8)
+        y = max(8, H - th - 8)
+    x = max(8, min(x, W - tw - 8))
+    y = max(8, min(y, H - th - 8))
     rect = pygame.Rect(x, y, tw, th)
-    # shadow
+
+    # shadow + panel
     sh = rect.move(3, 3)
     pygame.draw.rect(screen, (0, 0, 0), sh, border_radius=8)
     rounded_panel(screen, rect, PANEL_2, ACCENT, 8)
-    cy = y + pad
+
+    # Clip all text to inner content rect (hard stop for any overflow)
+    content = rect.inflate(-pad * 2, -pad * 2)
+    prev_clip = screen.get_clip()
+    screen.set_clip(content)
+    cy = content.y
     for row, is_t in wrapped:
-        if is_t:
-            draw_text(screen, font, row[: max_line + 10], x + pad, cy, TEXT)
-            cy += font.get_height() + 4
-        else:
-            draw_text(screen, font_xs, row[: max_line + 10], x + pad, cy, TEXT_DIM)
-            cy += font_xs.get_height() + 3
+        f = font if is_t else font_xs
+        col = TEXT if is_t else TEXT_DIM
+        # Final safety: ellipsize to content width in pixels
+        safe = ellipsize(f, row, content.w)
+        draw_text(screen, f, safe, content.x, cy, col)
+        cy += (font.get_height() + line_gap_title) if is_t else (font_xs.get_height() + line_gap_body)
+        if cy > content.bottom:
+            break
+    screen.set_clip(prev_clip)
 
 
 def _stage_config_lines(state: "AppState", stg: str) -> list[str]:
