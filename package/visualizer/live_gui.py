@@ -8,16 +8,16 @@ Capacity (approx, laptop):
   Sample hold:  SNAPSHOT_VIZ_MAX = 10k nodes kept after smart sample
   Draw:         DRAW_NODES / DRAW_EDGES (matched to sample so 10k is visible)
   Layout:       force-sim still samples LAYOUT_MAX only (keeps settle cheap)
-  Note:         pure CPU pygame — large draws can lower FPS; layout auto-freezes
+  Note:         pure CPU pygame — large draws can lower FPS; layout still samples LAYOUT_MAX
 
   hover   tooltips / flyouts on nodes & stages
   H       help / color legend (traffic lights)
   drag    pan graph · wheel zoom
   click   select node
-  R       reshuffle islands (settle briefly, stay frozen after)
-  Space   resettle polish once, then freeze again (never stays drifting)
+  R       reshuffle islands (keeps continuous live motion)
+  Space   pause ↔ resume live layout (default is always moving)
   S       reload snapshot · Q quit
-  Layout starts frozen; motion only while you ask it to settle.
+  Layout is LIVE by default — always doing something unless you pause.
   GodsEye is a CPU pygame dashboard (not GPU; does not accelerate RAG/memory).
 """
 
@@ -188,8 +188,8 @@ HELP_LINES = [
     "  Click a stage to pin its flyout",
     "",
     "KEYS  H help · 1 graph · 2 pipeline · 3 metrics",
-    "      Space resettle (then freeze) · R reshuffle · S reload · Q quit",
-    "      drag pan · wheel zoom · × Close · layout starts frozen",
+    "      Space pause/resume live layout · R reshuffle · S reload · Q quit",
+    "      drag pan · wheel zoom · × Close · layout is LIVE by default",
     "",
     "ORIGIN CRAWL (click a node)",
     "  Builds a trail: parent_id chain + graph edges (HAS_*, CONTAINS, …)",
@@ -240,13 +240,13 @@ class LiveState:
         self.snapshot_node_total = 0
         self.snapshot_edge_total = 0
         self.viz_capped = False
-        # Layout always starts frozen; Space/R trigger a short settle then re-freeze
-        self.layout_frozen = True
-        self.layout_ticks = LAYOUT_SETTLE_TICKS
+        # Layout is LIVE by default (continuous motion). Space pauses.
+        self.layout_frozen = False
+        self.layout_ticks = 0
         self.layout_energy = 0.0
         self.layout_w = 800.0
         self.layout_h = 600.0
-        self._settle_then_freeze = False  # Space/R: polish N ticks then lock
+        self._settle_then_freeze = False  # unused: product law is continuous live
         # Origin crawl: adjacency + trail from leaf → root
         # adj[nid] = list of (other_id, rel, "in"|"out")
         self.adj: dict[str, list[tuple[str, str, str]]] = {}
@@ -348,11 +348,13 @@ class LiveState:
         need_seed = [nid for nid in self.nodes if nid not in self.pos]
         if need_seed:
             self._seed_island_positions(need_seed, self.layout_w, self.layout_h)
-            # Structured islands — do NOT run fill-the-box physics (that made the square)
-            self.layout_frozen = True
-            self.layout_ticks = LAYOUT_SETTLE_TICKS
+            # Keep LIVE motion after seed — never lock frozen on reload
+            self.layout_frozen = False
+            self.layout_ticks = 0
             for v in self.vel.values():
-                v[0] = v[1] = 0.0
+                # small kick so new islands start moving immediately
+                v[0] = (random.random() - 0.5) * 0.4
+                v[1] = (random.random() - 0.5) * 0.4
         for nid in list(self.pos.keys()):
             if nid not in self.nodes:
                 del self.pos[nid]
@@ -784,22 +786,39 @@ class LiveState:
         self.vector_stats = {"vectors": n, "vocab_terms": terms, "algo": "tfidf-l2-v1"}
 
     def request_relayout(self) -> None:
-        """User pressed R — rebuild constellation islands, brief settle, then freeze."""
+        """User pressed R — rebuild constellation islands; stay LIVE."""
         self.pos.clear()
         self.vel.clear()
         self.layout_energy = 0.0
         self.snap_mtime = 0  # force reload + reseed
-        self.begin_settle()
-
-    def begin_settle(self) -> None:
-        """Run a short polish pass, then lock layout (Space / R)."""
         self.layout_frozen = False
         self.layout_ticks = 0
-        self._settle_then_freeze = True
-        self.event_log.appendleft("layout  settling…")
+        self._settle_then_freeze = False
+        self.event_log.appendleft("layout  live reshuffle")
+
+    def begin_settle(self) -> None:
+        """Resume continuous live layout (used after pause / reshuffle)."""
+        self.layout_frozen = False
+        self.layout_ticks = 0
+        self._settle_then_freeze = False
+        self.event_log.appendleft("layout  live")
+
+    def toggle_layout_pause(self) -> None:
+        """Space: pause ↔ resume continuous motion."""
+        if self.layout_frozen:
+            self.layout_frozen = False
+            self.layout_ticks = 0
+            self._settle_then_freeze = False
+            self.event_log.appendleft("layout  live")
+        else:
+            self.layout_frozen = True
+            for v in self.vel.values():
+                v[0] = 0.0
+                v[1] = 0.0
+            self.event_log.appendleft("layout  paused")
 
     def step_layout(self) -> None:
-        # Islands are pre-structured. Frozen by default — no idle drift.
+        # Continuous live layout unless user paused (Space).
         if self.layout_frozen:
             return
         try:
@@ -808,19 +827,13 @@ class LiveState:
             for nid, p in list(self.pos.items())[:50]:
                 if not (isinstance(p, (list, tuple)) and len(p) >= 2 and math.isfinite(p[0]) and math.isfinite(p[1])):
                     self.pos[nid] = [400.0 + random.random() * 40, 300.0 + random.random() * 40]
-                self.vel[nid] = [0.0, 0.0]
-            self.layout_frozen = True
+                self.vel[nid] = [(random.random() - 0.5) * 0.2, (random.random() - 0.5) * 0.2]
+            # Stay live after recovery — never lock frozen on error
+            self.layout_frozen = False
             self._settle_then_freeze = False
             return
         self.layout_ticks += 1
-        # Always re-freeze after settle window (Space never leaves it drifting)
-        if self.layout_ticks >= LAYOUT_SETTLE_TICKS:
-            self.layout_frozen = True
-            self._settle_then_freeze = False
-            for v in self.vel.values():
-                v[0] = 0.0
-                v[1] = 0.0
-            self.event_log.appendleft("layout  frozen")
+        # Never auto-freeze — continuous live is the product law
 
     def _step_layout_inner(self) -> None:
         """Very light local polish only — never expand-to-fill or wall-pack a square."""
@@ -1074,14 +1087,14 @@ def main() -> int:
                 elif event.key == pygame.K_r:
                     state.request_relayout()
                 elif event.key == pygame.K_SPACE:
-                    # Space = resettle once, then freeze (never toggles into free drift)
-                    state.begin_settle()
+                    # Space = pause ↔ resume continuous live layout
+                    state.toggle_layout_pause()
                 elif event.key == pygame.K_s:
                     state.snap_mtime = state.dag_mtime = 0
                     state.events_offset = 0
                     state.pos.clear()
                     state.vel.clear()
-                    state.layout_frozen = True
+                    state.layout_frozen = False
                     state._settle_then_freeze = False
                 elif event.key == pygame.K_1:
                     state.focus = 0
@@ -1207,7 +1220,7 @@ def main() -> int:
         screen.set_clip(brand_rect)
         draw_text(screen, font_title, "Private Brain", 12, 8, TEXT)
         draw_text(screen, font_xs, "Live Ops · CPU view", 12, 32, TEXT_MUTED)
-        motion = "layout: frozen" if state.layout_frozen else "layout: settling…"
+        motion = "layout: paused" if state.layout_frozen else "layout: LIVE"
         draw_text(screen, font_xs, motion, 12, 46, TEXT_MUTED if state.layout_frozen else YELLOW)
         screen.set_clip(prev)
 
@@ -1232,7 +1245,7 @@ def main() -> int:
                 pygame.draw.circle(screen, col, (lx + 5, 24), 5)
                 draw_text(screen, font_xs, lab, lx + 14, 17, TEXT_MUTED)
                 lx += 48
-            draw_text(screen, font_xs, "H help · R re-layout · Space freeze", lx + 4, 40, TEXT_MUTED)
+            draw_text(screen, font_xs, "H help · R re-layout · Space pause/live", lx + 4, 40, TEXT_MUTED)
 
         # Status strip (right, clipped)
         running_stages = state.running_stages()
@@ -1281,8 +1294,8 @@ def main() -> int:
             cap_txt = f"showing {shown_n}/{total_n} (cap hold {SNAPSHOT_VIZ_MAX} draw {DRAW_NODES})"
             cap_col = YELLOW
         else:
-            motion = "frozen" if state.layout_frozen else "settling"
-            cap_txt = f"{held_n} nodes · layout {motion} · R re-layout · Space freeze · hover for detail"
+            motion = "paused" if state.layout_frozen else "LIVE"
+            cap_txt = f"{held_n} nodes · layout {motion} · R re-layout · Space pause · hover for detail"
             cap_col = TEXT_MUTED
         draw_text(
             screen,
@@ -1558,7 +1571,7 @@ def main() -> int:
         draw_text(
             screen,
             font_xs,
-            f"H help   ·   Space resettle   ·   R reshuffle   ·   final_ok={state.final_ok}   ·   "
+            f"H help   ·   Space pause/live   ·   R reshuffle   ·   final_ok={state.final_ok}   ·   "
             f"run={rid}   ·   Q quit",
             12,
             H - BOT + 12,
