@@ -602,6 +602,8 @@ class LiveState:
         self.show_help = False
         self.show_jobs = False
         self.show_config = False
+        # Hover flyout cards (encyclopedia popups). T toggles; persisted in stage_config.
+        self.flyouts_enabled = True
         self.job_busy = False
         self.job_id: str | None = None
         self.job_status: str = "idle"  # idle | running | ok | fail
@@ -618,6 +620,7 @@ class LiveState:
             "swarm_agents": 16,
             "always_optimize": False,
             "allow_crawl": True,
+            "hover_flyouts": True,
         }
         # Snapshot capacity bookkeeping (full vs held for viz)
         self.snapshot_node_total = 0
@@ -1743,7 +1746,12 @@ def stage_config_path() -> Path:
 def load_stage_config_file() -> dict[str, Any]:
     """GodsEye + orchestrate share this file for stage knobs."""
     p = stage_config_path()
-    base = {"swarm_agents": 16, "always_optimize": False, "allow_crawl": True}
+    base = {
+        "swarm_agents": 16,
+        "always_optimize": False,
+        "allow_crawl": True,
+        "hover_flyouts": True,
+    }
     try:
         if p.is_file():
             d = json.loads(p.read_text(encoding="utf-8"))
@@ -1758,6 +1766,8 @@ def load_stage_config_file() -> dict[str, Any]:
         base["swarm_agents"] = 16
     base["always_optimize"] = bool(base.get("always_optimize"))
     base["allow_crawl"] = bool(base.get("allow_crawl", True))
+    # Default ON if key missing
+    base["hover_flyouts"] = bool(base.get("hover_flyouts", True))
     return base
 
 
@@ -1768,6 +1778,7 @@ def save_stage_config_file(cfg: dict[str, Any]) -> None:
         "swarm_agents": max(0, min(64, int(cfg.get("swarm_agents") or 16))),
         "always_optimize": bool(cfg.get("always_optimize")),
         "allow_crawl": bool(cfg.get("allow_crawl", True)),
+        "hover_flyouts": bool(cfg.get("hover_flyouts", True)),
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "note": "swarm_agents = local graph workers (agent_swarm), NOT Grok/Codex chat agents",
     }
@@ -1778,6 +1789,24 @@ def save_stage_config_file(cfg: dict[str, Any]) -> None:
         os.environ["PB_ALWAYS_OPTIMIZE"] = "1"
     else:
         os.environ.pop("PB_ALWAYS_OPTIMIZE", None)
+
+
+def apply_flyouts_pref(state: "LiveState", enabled: bool, *, persist: bool = True) -> None:
+    """Turn hover flyout cards on/off (T key or Config)."""
+    state.flyouts_enabled = bool(enabled)
+    cfg = dict(state.stage_config or load_stage_config_file())
+    cfg["hover_flyouts"] = state.flyouts_enabled
+    state.stage_config = cfg
+    if not state.flyouts_enabled:
+        state.pinned_stage = None
+    if persist:
+        try:
+            save_stage_config_file(cfg)
+        except Exception:
+            pass
+    state.event_log.appendleft(
+        "flyouts  ON (hover help)" if state.flyouts_enabled else "flyouts  OFF (quiet)"
+    )
 
 
 def run_job_async(state: "LiveState", job_id: str) -> None:
@@ -1923,7 +1952,7 @@ def config_overlay(
     config_hitboxes.clear()
     pad = 14
     box_w = min(580, W - 40)
-    box_h = min(400, H - 48)
+    box_h = min(440, H - 48)
     box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
     veil = pygame.Surface((W, H), pygame.SRCALPHA)
     veil.fill((0, 0, 0, 150))
@@ -1988,8 +2017,9 @@ def config_overlay(
     for label, key in (
         ("Always run optimize (even when grade already green)", "always_optimize"),
         ("Allow crawl when evidence is thin (needs network/auth)", "allow_crawl"),
+        ("Hover flyout help cards (off = quiet UI; press T anytime)", "hover_flyouts"),
     ):
-        on = bool(cfg.get(key))
+        on = bool(cfg.get(key, True if key == "hover_flyouts" else False))
         row = pygame.Rect(box.x + pad, y, box.w - pad * 2, 32)
         pygame.draw.rect(screen, PANEL_2 if on else PANEL, row, border_radius=6)
         pygame.draw.rect(screen, GREEN if on else BORDER, row, 1, border_radius=6)
@@ -2203,6 +2233,7 @@ def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
         ("H", "Help (this panel)"),
         ("J", "Jobs menu — concert / doctor"),
         ("C", "Config — swarm size, crawl"),
+        ("T", "Toggle hover flyout cards ON/OFF"),
         ("Space", "Pause / resume live layout"),
         ("R", "Reshuffle circular islands"),
         ("S", "Reload graph snapshot"),
@@ -2231,7 +2262,7 @@ def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
     draw_text(
         screen,
         font_xs,
-        "Tip: hover the on-disk chip for graph size breakdown · hover stages for encyclopedia",
+        "Tip: press T to turn hover flyouts off for a quiet UI · Config has the same toggle",
         box.x + pad,
         foot,
         TEXT_MUTED,
@@ -2287,6 +2318,7 @@ def main() -> int:
     config_hitboxes: list[tuple[pygame.Rect, str]] = []
     # Load stage config once at start
     state.stage_config = load_stage_config_file()
+    state.flyouts_enabled = bool(state.stage_config.get("hover_flyouts", True))
     os.environ.setdefault("PB_SWARM_AGENTS", str(state.stage_config.get("swarm_agents") or 16))
     running = True
     while running:
@@ -2352,6 +2384,10 @@ def main() -> int:
                         state.show_help = False
                         state.show_jobs = False
                         state.stage_config = load_stage_config_file()
+                        state.flyouts_enabled = bool(state.stage_config.get("hover_flyouts", True))
+                elif event.key == pygame.K_t:
+                    # T = toggle hover flyout help cards (persists)
+                    apply_flyouts_pref(state, not state.flyouts_enabled, persist=True)
                 elif state.show_jobs and event.unicode in "1234567":
                     # Number keys map to JOB_MENU while menu open
                     for job in JOB_MENU:
@@ -2429,17 +2465,27 @@ def main() -> int:
                                 state.event_log.appendleft(f"config  swarm_agents={n}")
                             elif hit_cfg.startswith("toggle:"):
                                 key = hit_cfg.split(":", 1)[1]
-                                state.stage_config[key] = not bool(state.stage_config.get(key))
-                                state.event_log.appendleft(
-                                    f"config  {key}={state.stage_config[key]}"
-                                )
+                                if key == "hover_flyouts":
+                                    cur = bool(state.stage_config.get("hover_flyouts", True))
+                                    apply_flyouts_pref(state, not cur, persist=False)
+                                else:
+                                    state.stage_config[key] = not bool(state.stage_config.get(key))
+                                    state.event_log.appendleft(
+                                        f"config  {key}={state.stage_config[key]}"
+                                    )
                             elif hit_cfg == "action:save":
                                 save_stage_config_file(state.stage_config)
+                                state.flyouts_enabled = bool(
+                                    state.stage_config.get("hover_flyouts", True)
+                                )
                                 state.event_log.appendleft(
                                     f"config  saved swarm={state.stage_config.get('swarm_agents')}"
                                 )
                             elif hit_cfg == "action:save_run":
                                 save_stage_config_file(state.stage_config)
+                                state.flyouts_enabled = bool(
+                                    state.stage_config.get("hover_flyouts", True)
+                                )
                                 state.show_config = False
                                 run_job_async(state, "concert")
                         break
@@ -2553,7 +2599,11 @@ def main() -> int:
         draw_text(screen, font_title, "Private Brain", 12, 10, TEXT)
         motion = "LIVE" if not state.layout_frozen else "paused"
         mcol = YELLOW if not state.layout_frozen else TEXT_MUTED
-        draw_text(screen, font_xs, f"Live Ops · {motion}", 12, 36, mcol)
+        brand_sub = f"Live Ops · {motion}"
+        if not state.flyouts_enabled:
+            brand_sub += " · flyouts OFF"
+            mcol = YELLOW
+        draw_text(screen, font_xs, brand_sub, 12, 36, mcol)
         screen.set_clip(prev)
 
         # KPIs stop before the Help button (never under Healthy)
@@ -3022,17 +3072,33 @@ def main() -> int:
         rid = (state.last_run_id or "—")[:20]
         bx = 10
         by = H - BOT + 8
-        for key in ("H", "J", "C", "R", "Space", "Q"):
-            bx += _draw_key_chip(screen, font_xs, key, bx, by) + 6
-        meta = f"final_ok={state.final_ok}  ·  run={rid}"
-        draw_text(screen, font_xs, meta, bx + 8, by + 3, TEXT_MUTED)
+        for key in ("H", "J", "C", "T", "R", "Space", "Q"):
+            chip_fill = PANEL_2
+            chip_border = BORDER
+            if key == "T" and not state.flyouts_enabled:
+                chip_fill = (50, 36, 28)
+                chip_border = YELLOW
+            bx += _draw_key_chip(
+                screen, font_xs, key, bx, by, fill=chip_fill, border=chip_border
+            ) + 6
+        fly_lab = "flyouts OFF" if not state.flyouts_enabled else "flyouts on"
+        meta = f"{fly_lab}  ·  final_ok={state.final_ok}  ·  run={rid}"
+        draw_text(
+            screen,
+            font_xs,
+            meta,
+            bx + 8,
+            by + 3,
+            YELLOW if not state.flyouts_enabled else TEXT_MUTED,
+        )
         clock_s = time.strftime("%H:%M:%S")
         draw_text(screen, font_xs, clock_s, W - font_xs.size(clock_s)[0] - 14, by + 3, TEXT_DIM)
 
         # Flyouts (after main UI so they sit on top). Every explanation is clipped inside its card.
         # Priority: node → stage → disk chip → specific chrome → empty graph area.
+        # Off via T or Config → "Hover flyout help cards" (quiet UI).
         menus_open = state.show_help or state.show_config or state.show_jobs
-        if not menus_open:
+        if state.flyouts_enabled and not menus_open:
             if state.hover_node and state.hover_node in state.nodes:
                 n = state.nodes[state.hover_node]
                 flyout(
