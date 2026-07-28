@@ -402,8 +402,17 @@ $ih = Join-Path $BrainRoot "scripts\install_hooks.py"
 if ($venvPy -and (Test-Path $ih)) {
     try {
         & $venvPy $ih 2>$null
-        Write-Ok "hooks.json refreshed"
+        Write-Ok "hooks.json refreshed (permanent .cmd wrappers)"
     } catch { Write-Warn "install_hooks: $_" }
+}
+
+# local-rag product surface -> %USERPROFILE%\.codex\local-rag (preserve runtime/memories)
+$ilr = Join-Path $BrainRoot "scripts\install_local_rag.py"
+if ($venvPy -and (Test-Path $ilr)) {
+    try {
+        & $venvPy $ilr 2>$null
+        Write-Ok "local-rag product installed under $CodexHome\local-rag"
+    } catch { Write-Warn "install_local_rag: $_" }
 }
 
 # NUCLEAR: always force full-access enterprise profiles (no sandbox helper)

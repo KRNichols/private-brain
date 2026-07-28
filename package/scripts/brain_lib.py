@@ -289,7 +289,9 @@ def write_node(
         content_path = f"content/{safe_id(node_id)}.md"
         (CONTENT_DIR / f"{safe_id(node_id)}.md").write_text(content, encoding="utf-8")
         body_hash = sha256_text(content)
-        if chunk and len(content) > max_chunk_chars:
+        # Always emit ≥1 Chunk when content present (handoff: page with body must
+        # not end with chunk_ids=[]). Short pages still get a single chunk.
+        if chunk and str(content).strip():
             chunk_ids = _write_chunks(node_id, content, max_chunk_chars)
 
     node = {

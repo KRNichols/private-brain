@@ -153,6 +153,49 @@ def ensure_features_and_agents(text: str) -> str:
     return text
 
 
+def _prepend_managed_before_first_table(cleaned: str, block: str) -> str:
+    """Insert managed top-level keys before the first [table] header.
+
+    TOML assigns bare keys after a table header to that table. Managed globals
+    (approval_policy, sandbox_mode, …) must never follow [features]/[agents]/…
+    """
+    block = block.strip() + "\n"
+    lines = cleaned.splitlines(keepends=True)
+    first_table = None
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*\[[^\]]+\]\s*$", line):
+            first_table = i
+            break
+    if first_table is None:
+        body = "".join(lines).rstrip()
+        if body:
+            return body + "\n\n" + block
+        return block
+    head = "".join(lines[:first_table]).rstrip()
+    tail = "".join(lines[first_table:]).lstrip()
+    if head:
+        return head + "\n\n" + block + "\n" + tail
+    return block + "\n" + tail
+
+
+def managed_keys_before_first_table(text: str) -> bool:
+    """Return True if managed marker/keys appear before any TOML table."""
+    first_table = None
+    managed_at = None
+    for i, line in enumerate(text.splitlines()):
+        if first_table is None and re.match(r"^\s*\[[^\]]+\]\s*$", line):
+            first_table = i
+        if managed_at is None and (
+            MARKER_BEGIN in line or line.strip().startswith("approval_policy")
+        ):
+            managed_at = i
+    if managed_at is None:
+        return False
+    if first_table is None:
+        return True
+    return managed_at < first_table
+
+
 def build_managed_block(
     beast_md: Path,
     developer_text: str,
@@ -234,7 +277,10 @@ def merge(
     developer_text = developer_file.read_text(encoding="utf-8")
     model = model or "gpt-5.6-terra"
     block = build_managed_block(beast_md, developer_text, model)
-    merged = cleaned.rstrip() + "\n" + block
+    # LAW: all managed Private Brain GLOBAL settings must appear BEFORE the first
+    # TOML table. Keys after [agents]/[features]/etc. become table fields and
+    # break Codex parse (e.g. approval_policy string inside [features]).
+    merged = _prepend_managed_before_first_table(cleaned, block)
     config_path.write_text(merged, encoding="utf-8")
     print(f"wrote: {config_path}")
 

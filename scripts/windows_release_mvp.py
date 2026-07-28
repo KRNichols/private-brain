@@ -118,6 +118,7 @@ def _sync_brain(brain: Path) -> None:
         "package",
         "installers",
         "loop_graph_harness",
+        "local-rag",
         ".github",
     ):
         src = ROOT / rel
@@ -166,6 +167,11 @@ def phase0_lint() -> None:
         "brain_lib.py",
         "enterprise.py",
         "install_hooks.py",
+        "install_local_rag.py",
+        "product_readiness.py",
+        "e2e_status_report.py",
+        "neoj_path_reconcile.py",
+        "session_start_deferred.py",
         "golden_config.py",
         "gitlab_ingest.py",
         "github_ingest.py",
@@ -178,9 +184,18 @@ def phase0_lint() -> None:
         "organism.py",
         "godseye.py",
         "zero_soft.py",
+        "merge_codex_config.py",
     ]
     missing = [m for m in required if not (SCRIPTS / m).is_file()]
     gate("required_scripts_present", not missing, f"missing={missing}")
+    # local-rag source package
+    lr = ROOT / "local-rag"
+    gate(
+        "local_rag_package_present",
+        (lr / "cli" / "ask.py").is_file() and (lr / "agents" / "run_agent.py").is_file(),
+        str(lr),
+    )
+    gate("programs_yaml_present", (ROOT / "config" / "programs.yaml").is_file())
 
 
 def phase1_layout(codex: Path, brain: Path) -> None:
@@ -242,6 +257,31 @@ def phase3_hooks_and_beast(codex: Path, brain: Path) -> None:
         raw = hj.read_text(encoding="utf-8")
         gate("hooks_has_commandWindows", "commandWindows" in raw or "command" in raw)
         gate("hooks_no_mac_abs", "/Users/" not in raw.split("commandWindows")[-1][:400] if "commandWindows" in raw else True)
+        gate(
+            "hooks_cmd_wrappers_configured",
+            "pb-session-start.cmd" in raw
+            and "pb-user-prompt-submit.cmd" in raw
+            and "pb-stop-validate.cmd" in raw,
+            "commandWindows must point at permanent .cmd wrappers",
+        )
+    for w in ("pb-session-start.cmd", "pb-user-prompt-submit.cmd", "pb-stop-validate.cmd"):
+        gate(f"wrapper_{w}", (brain / "hooks" / w).is_file(), str(brain / "hooks" / w))
+
+    # local-rag product install into CODEX_HOME/local-rag
+    r = _run([sys.executable, str(brain / "scripts" / "install_local_rag.py")], env=env, timeout=120)
+    gate("install_local_rag", r.returncode == 0, (r.stdout or r.stderr or "")[-400:])
+    r = _run([sys.executable, str(brain / "scripts" / "product_readiness.py")], env=env, timeout=60)
+    try:
+        pr = json.loads((r.stdout or "").strip() or "{}")
+    except json.JSONDecodeError:
+        pr = {}
+    gate(
+        "product_readiness_all",
+        bool(pr.get("installer_integration"))
+        and bool(pr.get("ask_cli"))
+        and bool(pr.get("sovereign_provider")),
+        json.dumps(pr)[:400],
+    )
 
     # beast profiles (laptop recovery shape)
     for name, body in (
@@ -345,18 +385,29 @@ def phase6_hooks(brain: Path) -> None:
     if (st / "rag.off").exists():
         (st / "rag.off").unlink()
 
+    t0 = time.perf_counter()
     ss = _hook_json(brain, "session_start.py", {"hook_event_name": "SessionStart", "source": "startup"})
+    ss_sec = time.perf_counter() - t0
     gate(
         "session_start_json",
         not ss.get("_parse_error") and (ss.get("continue") is True or "hookSpecificOutput" in ss),
         json.dumps(ss)[:300],
     )
+    # SessionStart must complete materially below 120s (budget gate: 25s hard in CI)
+    gate("session_start_under_budget", ss_sec < 25.0, f"elapsed_sec={ss_sec:.3f}")
+    # Must not inject multi-KB kingdom/golden dumps
+    ss_ctx = ""
+    if isinstance(ss.get("hookSpecificOutput"), dict):
+        ss_ctx = ss["hookSpecificOutput"].get("additionalContext") or ""
+    gate("session_start_compact_ctx", len(ss_ctx) < 8000, f"ctx_chars={len(ss_ctx)}")
 
+    t0 = time.perf_counter()
     ups_beast = _hook_json(
         brain,
         "user_prompt_submit.py",
         {"hook_event_name": "UserPromptSubmit", "prompt": "what is the status of the graph? cite nodes."},
     )
+    ups_sec = time.perf_counter() - t0
     ctx = ""
     if isinstance(ups_beast.get("hookSpecificOutput"), dict):
         ctx = ups_beast["hookSpecificOutput"].get("additionalContext") or ""
@@ -366,21 +417,101 @@ def phase6_hooks(brain: Path) -> None:
         not ups_beast.get("_parse_error") and ups_beast.get("continue") is not False,
         f"ctx_len={len(ctx)} keys={list(ups_beast.keys())[:8]}",
     )
+    gate("ups_under_budget", ups_sec < 40.0, f"elapsed_sec={ups_sec:.3f}")
 
-    # Stop: uncited should block in enterprise beast
+    # Stop: operational ack must NOT block
+    stop_ops = _hook_json(
+        brain,
+        "stop_validate.py",
+        {
+            "hook_event_name": "Stop",
+            "stop_hook_active": False,
+            "last_assistant_message": "Beast mode is already active.",
+        },
+    )
+    gate(
+        "stop_ops_beast_ack",
+        stop_ops.get("continue") is True and stop_ops.get("decision") != "block",
+        json.dumps(stop_ops)[:240],
+    )
+    stop_ops2 = _hook_json(
+        brain,
+        "stop_validate.py",
+        {
+            "hook_event_name": "Stop",
+            "stop_hook_active": False,
+            "last_assistant_message": "Normal mode is active.",
+        },
+    )
+    gate(
+        "stop_ops_normal_ack",
+        stop_ops2.get("continue") is True and stop_ops2.get("decision") != "block",
+        json.dumps(stop_ops2)[:240],
+    )
+
+    # Factual uncited source claim should block when enterprise + no cites
+    # Seed current evidence so gate has something to demand cites against
+    (st / "current_evidence.json").write_text(
+        json.dumps(
+            {
+                "evidence": [
+                    {"id": "confluence:page:633240886", "tier": "T0", "source": "confluence"},
+                    {"id": "test:node:fixture", "tier": "T1", "source": "fixture"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     stop_bad = _hook_json(
         brain,
         "stop_validate.py",
         {
             "hook_event_name": "Stop",
             "stop_hook_active": False,
-            "last_assistant_message": "Everything is fine with no evidence at all.",
+            "last_assistant_message": (
+                "According to confluence the donut rules require X and the graph shows Y."
+            ),
         },
     )
-    # Stop must be pure legal keys only
-    illegal = set(stop_bad.keys()) - {"continue", "decision", "reason", "systemMessage", "stopReason", "suppressOutput", "_parse_error", "_raw", "_rc", "_err"}
-    gate("stop_no_illegal_keys", not illegal and not stop_bad.get("_parse_error"), f"keys={list(stop_bad.keys())} illegal={illegal}")
-    # may block or continue depending on evidence — both valid JSON
+    illegal = set(stop_bad.keys()) - {
+        "continue",
+        "decision",
+        "reason",
+        "systemMessage",
+        "stopReason",
+        "suppressOutput",
+        "_parse_error",
+        "_raw",
+        "_rc",
+        "_err",
+    }
+    gate(
+        "stop_no_illegal_keys",
+        not illegal and not stop_bad.get("_parse_error"),
+        f"keys={list(stop_bad.keys())} illegal={illegal}",
+    )
+    gate(
+        "stop_uncited_source_blocks",
+        stop_bad.get("decision") == "block",
+        json.dumps(stop_bad)[:240],
+    )
+    # Cited current Confluence page passes
+    stop_good = _hook_json(
+        brain,
+        "stop_validate.py",
+        {
+            "hook_event_name": "Stop",
+            "stop_hook_active": False,
+            "last_assistant_message": (
+                "According to confluence donut rules see `confluence:page:633240886`."
+            ),
+        },
+    )
+    gate(
+        "stop_cited_confluence_passes",
+        stop_good.get("continue") is True or stop_good.get("decision") != "block",
+        json.dumps(stop_good)[:240],
+    )
     gate(
         "stop_beast_legal_shape",
         stop_bad.get("decision") == "block" or stop_bad.get("continue") is True,
@@ -423,6 +554,139 @@ def phase6_hooks(brain: Path) -> None:
         {"hook_event_name": "UserPromptSubmit", "prompt": "beast mode"},
     )
     gate("ups_beast_reenable", not ups_on.get("_parse_error"), json.dumps(ups_on)[:200])
+
+
+def phase6b_handoff_diagnostics(codex: Path, brain: Path) -> None:
+    """Developer handoff gates: GodsEye JSON, Neo4J recon, config.toml placement, e2e report."""
+    print("\n=== P6b HANDOFF DIAGNOSTICS ===", flush=True)
+    env = os.environ.copy()
+    env["PRIVATE_BRAIN_HOME"] = str(brain)
+    env["CODEX_HOME"] = str(codex)
+    env["PYTHONPATH"] = str(brain / "scripts") + os.pathsep + str(brain)
+
+    # GodsEye status --json schema
+    r = _run(
+        [sys.executable, str(brain / "scripts" / "godseye.py"), "status", "--json"],
+        env=env,
+        timeout=60,
+    )
+    try:
+        ge = json.loads((r.stdout or "").strip() or "{}")
+    except json.JSONDecodeError:
+        ge = {}
+    required_ge = {
+        "enabled",
+        "dismissed",
+        "pids",
+        "alive",
+        "backend",
+        "capability",
+        "last_error",
+        "last_started_at",
+    }
+    gate(
+        "godseye_status_json_schema",
+        r.returncode == 0 and required_ge.issubset(set(ge.keys())),
+        f"keys={list(ge.keys())} missing={required_ge - set(ge.keys())}",
+    )
+    # Must not claim running without alive pids
+    gate(
+        "godseye_no_false_started",
+        not (ge.get("claim_started_ok") and not (ge.get("alive") or ge.get("alive_count"))),
+        json.dumps(ge)[:240],
+    )
+
+    # Neo4J recon self-test
+    r = _run(
+        [sys.executable, str(brain / "scripts" / "neoj_path_reconcile.py"), "--self-test"],
+        env=env,
+        timeout=60,
+    )
+    gate("neoj_path_reconcile_self_test", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
+
+    # Confluence short-page always gets ≥1 chunk
+    r = _run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from brain_lib import write_node, ensure_tree; ensure_tree(); "
+                "n=write_node('confluence:page:testchunk', type='Page', source='confluence', "
+                "title='t', content='short body rules', tier='T0', chunk=True); "
+                "assert n.get('chunk_ids'), n; print(len(n['chunk_ids']))"
+            ),
+        ],
+        env=env,
+        timeout=60,
+    )
+    gate("confluence_page_always_chunks", r.returncode == 0, (r.stdout or r.stderr or "")[:200])
+
+    # config.toml managed keys before first table
+    try:
+        sys.path.insert(0, str(brain / "scripts"))
+        from merge_codex_config import (  # type: ignore
+            build_managed_block,
+            managed_keys_before_first_table,
+            _prepend_managed_before_first_table,
+        )
+
+        beast_md = brain / "beast-mode.md"
+        if not beast_md.is_file():
+            beast_md = ROOT / "beast-mode.md"
+        sample = "[features]\nhooks = true\n\n[agents]\nmax_threads = 6\n"
+        block = build_managed_block(beast_md, "dev instructions test", "gpt-5.1")
+        merged = _prepend_managed_before_first_table(sample, block)
+        gate(
+            "config_managed_before_tables",
+            managed_keys_before_first_table(merged),
+            merged[:200],
+        )
+        after_features = merged.split("[features]", 1)[-1] if "[features]" in merged else ""
+        gate(
+            "config_no_approval_in_features",
+            "approval_policy" not in after_features.split("[")[0],
+            after_features[:120],
+        )
+    except Exception as e:
+        gate("config_managed_before_tables", False, str(e))
+        gate("config_no_approval_in_features", False, str(e))
+
+    # e2e_status_report read-only
+    r = _run(
+        [sys.executable, str(brain / "scripts" / "e2e_status_report.py")],
+        env=env,
+        timeout=120,
+    )
+    gate("e2e_status_report_runs", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
+
+    # release gate one-JSON mock
+    lr = codex / "local-rag" / "agents" / "run_release_gate_workflow.py"
+    if lr.is_file():
+        r = _run([sys.executable, str(lr), "--mock"], env=env, timeout=30)
+        lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip()]
+        ok_one = False
+        try:
+            objs = [json.loads(ln) for ln in lines if ln.strip().startswith("{")]
+            ok_one = len(objs) == 1 and objs[0].get("ok") is True and objs[0].get("violations") == 0
+        except Exception:
+            ok_one = False
+        gate("release_gate_one_json", r.returncode == 0 and ok_one, (r.stdout or "")[:200])
+    else:
+        gate("release_gate_one_json", False, "release runner missing")
+
+    # mock E2E agent into external runs root
+    os.environ["PB_LOCAL_RAG_MOCK"] = "1"
+    env["PB_LOCAL_RAG_MOCK"] = "1"
+    agent = codex / "local-rag" / "agents" / "run_agent.py"
+    if agent.is_file():
+        r = _run(
+            [sys.executable, str(agent), "--mock", "--role", "retriever", "--prompt", "smoke"],
+            env=env,
+            timeout=60,
+        )
+        gate("local_rag_mock_agent", r.returncode == 0, (r.stdout or r.stderr or "")[:200])
+    else:
+        gate("local_rag_mock_agent", False, "missing")
 
 
 def phase7_crawlers(brain: Path) -> None:
@@ -712,6 +976,7 @@ def main() -> int:
         phase4_rag_boot(brain)
         phase5_beast_flags(brain)
         phase6_hooks(brain)
+        phase6b_handoff_diagnostics(codex, brain)
         phase7_crawlers(brain)
         phase8_ingestors(brain)
         phase9_agents(brain)

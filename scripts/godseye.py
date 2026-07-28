@@ -382,9 +382,99 @@ def ensure_gui(*, replace: bool = False, force: bool = False) -> dict:
         return {"godseye": True, "gui": "error", "error": str(e)[:200], "reaped": reaped}
 
 
+def _capability_backend() -> dict:
+    """Probe capability without starting GUI."""
+    out = {
+        "backend": os.environ.get("PB_GODSEYE_BACKEND") or "gl",
+        "capability": "unknown",
+        "last_error": None,
+    }
+    try:
+        from capabilities import probe  # type: ignore
+
+        caps = probe() or {}
+        feat = caps.get("features") or {}
+        out["capability"] = feat.get("godseye_backend") or feat.get("godseye") or "unknown"
+        if feat.get("godseye_backend") == "off":
+            out["backend"] = "off"
+        elif feat.get("godseye_backend"):
+            out["backend"] = str(feat.get("godseye_backend"))
+    except Exception as e:
+        out["last_error"] = f"capability_probe: {e}"[:200]
+    # pygame/numpy presence
+    try:
+        import importlib.util
+
+        has_pg = importlib.util.find_spec("pygame") is not None
+        has_np = importlib.util.find_spec("numpy") is not None
+        if has_pg and has_np:
+            out.setdefault("capability", "TRUE_GL" if out.get("backend") == "gl" else "cpu")
+            if out.get("capability") == "unknown":
+                out["capability"] = "TRUE_GL"
+        elif not has_pg:
+            out["capability"] = "missing_pygame"
+    except Exception:
+        pass
+    return out
+
+
+def status_json(root: Path | None = None) -> dict:
+    """Authoritative machine-readable GodsEye status (dashboard/TUI must consume this)."""
+    root = root or _root()
+    st = _state()
+    pids = _pgrep_gui_pids(root)
+    alive_flags = [_pid_alive(p) for p in pids]
+    alive_pids = [p for p, a in zip(pids, alive_flags) if a]
+    cap = _capability_backend()
+    last_error = None
+    last_started_at = None
+    try:
+        err_p = st / "godseye_last_error.txt"
+        if err_p.is_file():
+            last_error = err_p.read_text(encoding="utf-8", errors="replace")[:400]
+    except Exception:
+        pass
+    try:
+        started_p = st / "godseye_last_started_at.txt"
+        if started_p.is_file():
+            last_started_at = started_p.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    # Prefer ensure_gui error if present in metrics
+    try:
+        metrics = st / "godseye_metrics.json"
+        if metrics.is_file():
+            import json as _json
+
+            m = _json.loads(metrics.read_text(encoding="utf-8"))
+            if isinstance(m, dict) and m.get("last_error"):
+                last_error = str(m.get("last_error"))[:400]
+    except Exception:
+        pass
+    if last_error is None and cap.get("last_error"):
+        last_error = cap.get("last_error")
+
+    return {
+        "enabled": enabled(),
+        "dismissed": user_dismissed(),
+        "pids": pids,
+        "alive": alive_pids,  # list of live PIDs (authoritative)
+        "alive_count": len(alive_pids),
+        "pid_count": len(pids),
+        "backend": cap.get("backend"),
+        "capability": cap.get("capability"),
+        "last_error": last_error,
+        "last_started_at": last_started_at,
+        "gui_running": len(alive_pids) > 0,
+        # Never claim started without PID confirmation
+        "claim_started_ok": len(alive_pids) > 0,
+    }
+
+
 def main() -> int:
     import argparse
     import json
+    from datetime import datetime, timezone
 
     ap = argparse.ArgumentParser(description="GodsEye single-window GUI control")
     ap.add_argument(
@@ -393,25 +483,20 @@ def main() -> int:
         default="status",
         choices=["status", "start", "stop", "kill", "restart"],
     )
+    ap.add_argument(
+        "--json",
+        action="store_true",
+        help="Machine-readable JSON (default for status; force for all cmds)",
+    )
     args = ap.parse_args()
     root = _root()
+    # status always JSON; other cmds JSON when --json or always for start result
+    as_json = True  # CLI contract: structured output for controllers
 
     if args.cmd == "status":
-        pids = _pgrep_gui_pids(root)
-        print(
-            json.dumps(
-                {
-                    "enabled": enabled(),
-                    "dismissed": user_dismissed(),
-                    "pids": pids,
-                    "alive": [_pid_alive(p) for p in pids],
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(status_json(root), indent=2))
         return 0
     if args.cmd == "kill":
-        # kill windows but leave dismissed so boot won't reopen
         print(json.dumps(terminate_existing_guis(root, mark_user_dismissed=True), indent=2))
         return 0
     if args.cmd == "stop":
@@ -420,14 +505,56 @@ def main() -> int:
         return 0
     if args.cmd == "start":
         set_enabled(True)  # also clears dismissed
-        print(json.dumps(ensure_gui(replace=False, force=True), indent=2))
-        return 0
+        result = ensure_gui(replace=False, force=True)
+        # Record start attempt; only claim running if PID alive
+        st = _state()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            (st / "godseye_last_started_at.txt").write_text(now, encoding="utf-8")
+        except Exception:
+            pass
+        pid = result.get("pid")
+        if result.get("gui") in ("started", "already") and pid and _pid_alive(int(pid)):
+            result["claim_started_ok"] = True
+            result["alive"] = [int(pid)]
+            result["last_started_at"] = now
+        else:
+            result["claim_started_ok"] = False
+            if result.get("gui") == "error":
+                try:
+                    (st / "godseye_last_error.txt").write_text(
+                        str(result.get("error") or "start_failed")[:400], encoding="utf-8"
+                    )
+                except Exception:
+                    pass
+            # Do not lie: profile selection must not claim GUI started without PID
+            if result.get("gui") == "started" and not result.get("claim_started_ok"):
+                result["gui"] = "error"
+                result["error"] = result.get("error") or "started_but_pid_not_alive"
+        # Merge full status fields
+        sj = status_json(root)
+        result = {**sj, **result}
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("claim_started_ok") or result.get("gui") in ("dismissed", "off") else 0
     if args.cmd == "restart":
         set_enabled(True)
-        print(json.dumps(ensure_gui(replace=True, force=True), indent=2))
+        result = ensure_gui(replace=True, force=True)
+        st = _state()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            (st / "godseye_last_started_at.txt").write_text(now, encoding="utf-8")
+        except Exception:
+            pass
+        pid = result.get("pid")
+        result["claim_started_ok"] = bool(pid and _pid_alive(int(pid)))
+        result["last_started_at"] = now
+        sj = status_json(root)
+        result = {**sj, **result}
+        print(json.dumps(result, indent=2))
         return 0
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

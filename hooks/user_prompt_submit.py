@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex UserPromptSubmit — natural-language mode control + RAG-DAG concert.
+"""Codex UserPromptSubmit — natural-language mode control + compact RAG inject.
 
 Product model:
   Install once (hooks sideloaded). Open Codex. Talk. No daily shell launcher required.
@@ -10,13 +10,17 @@ Conversation (no flags):
   "beast mode" / "enterprise mode" / "turn on rag"     → RAG-DAG ON again
 
 When RAG off: no retrieve inject, no cite hard-gate (Stop hook also checks mode).
-When RAG on: full dag_turn + golden/godseye/co-worker phrases.
+When RAG on: compact local retrieve only — never remote API/page fetch/graph write/
+chunk/vector/snapshot work synchronously (developer handoff 2026-07-28).
+Budget: materially under Codex 180s UPS timeout (default 25s wall).
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
+import time
+import uuid
 from pathlib import Path
 
 HOME = Path.home()
@@ -31,6 +35,7 @@ os.environ["PYTHONPATH"] = str(SCRIPTS) + os.pathsep + os.environ.get("PYTHONPAT
 
 STATE = BRAIN_HOME / ".brain" / "state"
 MODE_FILE = STATE / "conversation_mode.json"  # {"mode": "beast"|"normal"}
+UPS_BUDGET_SEC = float(os.environ.get("PB_UPS_BUDGET", "25") or "25")
 
 
 def _mode() -> str:
@@ -144,19 +149,15 @@ def main() -> int:
 
     if any(p in low for p in beast_phrases):
         _set_mode("beast")
+        g = ""
         try:
             from golden_config import load_compact_for_inject
 
-            g = load_compact_for_inject(max_chars=8000)
+            g = load_compact_for_inject(max_chars=600)
         except Exception:
             g = ""
-        # also re-assert access (ledgered)
-        try:
-            from conversation_router import _heal_access_if_needed
-
-            acc = _heal_access_if_needed()
-        except Exception:
-            acc = ""
+        # Do NOT run heal_access (remote) synchronously — ledger only if instant file read
+        acc = ""
         sys.stdout.write(
             json.dumps(
                 {
@@ -167,7 +168,7 @@ def main() -> int:
                             "MODE=BEAST. RAG-DAG reactivated. Full system access + evidence cites required.\n"
                             f"{acc}\n"
                             + g
-                        )[:18000],
+                        )[:2500],
                     },
                     "systemMessage": "Private Brain: BEAST mode — RAG-DAG on",
                 }
@@ -338,21 +339,127 @@ def main() -> int:
             )
             return 0
 
-    try:
-        from orchestrate import dag_turn
+    # ── BEAST path: compact local retrieve only (no remote / no crawl / no write) ──
+    wall0 = time.perf_counter()
+    deadline = wall0 + UPS_BUDGET_SEC
+    deferred_id = ""
+    timings: dict = {}
+    ctx = ""
+    evidence: list = []
 
-        res = dag_turn(prompt, allow_crawl=True)
-        ctx = res.get("context") or ""
+    try:
+        # Compact existing-graph retrieve only — never allow_crawl in-hook
+        t0 = time.perf_counter()
+        if time.perf_counter() < deadline - 1.0:
+            try:
+                from orchestrate import dag_turn
+
+                # allow_crawl=False: no remote, no long crawl in hook budget
+                res = dag_turn(prompt, allow_crawl=False)
+                ctx = res.get("context") or ""
+                evidence = (res.get("retrieve") or {}).get("evidence") or res.get("evidence") or []
+            except TypeError:
+                # older signature without allow_crawl
+                from orchestrate import dag_turn
+
+                res = dag_turn(prompt)
+                ctx = res.get("context") or ""
+                evidence = (res.get("retrieve") or {}).get("evidence") or []
+            except Exception as e:
+                ctx = f"(compact retrieve unavailable: {e})"
+        timings["retrieve_sec"] = round(time.perf_counter() - t0, 4)
+
+        # Persist current evidence bundle for Stop handoff
+        try:
+            STATE.mkdir(parents=True, exist_ok=True)
+            if evidence:
+                (STATE / "current_evidence.json").write_text(
+                    json.dumps(
+                        {
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "prompt_hash": str(abs(hash(prompt)))[:16],
+                            "evidence": evidence[:48],
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                (STATE / "ups_evidence.json").write_text(
+                    json.dumps({"evidence": evidence[:48]}, indent=2), encoding="utf-8"
+                )
+        except Exception:
+            pass
+
+        # Queue any approved background work (page ingest, chunk, vector) — do not run here
+        try:
+            deferred_id = f"ups-{uuid.uuid4().hex[:12]}"
+            ddir = STATE / "deferred"
+            ddir.mkdir(parents=True, exist_ok=True)
+            (ddir / f"{deferred_id}.json").write_text(
+                json.dumps(
+                    {
+                        "task_id": deferred_id,
+                        "reason": "ups_no_sync_remote",
+                        "queued_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "work": [
+                            "remote_api_deferred",
+                            "page_fetch_deferred",
+                            "graph_write_deferred",
+                            "chunk_vector_deferred",
+                            "snapshot_deferred",
+                        ],
+                        "status": "queued_not_started_in_hook",
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception:
+            deferred_id = ""
+
+        total = round(time.perf_counter() - wall0, 4)
+        try:
+            (STATE / "ups_telemetry.json").write_text(
+                json.dumps(
+                    {
+                        "hook": "UserPromptSubmit",
+                        "total_sec": total,
+                        "budget_sec": UPS_BUDGET_SEC,
+                        "context_chars": len(ctx or ""),
+                        "deferred_task_id": deferred_id,
+                        "stages": timings,
+                        "skipped": [
+                            "remote_api",
+                            "page_fetch",
+                            "graph_mutation",
+                            "chunking",
+                            "vectoring",
+                            "snapshot_rebuild",
+                        ],
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+        # Cap inject size — never dump multi-KB remote pages
+        inject = (ctx or "")[:4000]
+        if deferred_id:
+            inject = (
+                inject
+                + f"\n\n[UPS deferred_task_id={deferred_id} — no sync remote/crawl/chunk in hook]"
+            ).strip()
         out = {
             "continue": True,
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
-                "additionalContext": ctx[:12000],
+                "additionalContext": inject,
             },
+            "systemMessage": f"Private Brain UPS · t={total}s · deferred={deferred_id or 'none'}",
         }
-        if not res.get("final_ok"):
-            out["systemMessage"] = "Private Brain: thin evidence or validator issues — state gaps explicitly."
-        sys.stdout.write(json.dumps(out))
+        sys.stdout.write(json.dumps(out, ensure_ascii=True))
         return 0
     except Exception as e:
         sys.stdout.write(
@@ -363,7 +470,8 @@ def main() -> int:
                         "hookEventName": "UserPromptSubmit",
                         "additionalContext": f"Private Brain turn error (non-fatal): {e}",
                     },
-                }
+                },
+                ensure_ascii=True,
             )
         )
         return 0

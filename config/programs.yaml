@@ -1,0 +1,85 @@
+# Local program-aware GraphRAG metadata (no secrets).
+# Ingest pipelines should attach applicable fields to nodes/edges.
+
+version: 1
+default_program: corporate-pilot
+
+programs:
+  corporate-pilot:
+    program_context: corporate-pilot
+    subsystem: private-brain
+    runtime_class: local-rag-dag
+    ipc_model: hooks-and-files
+    language: python
+    interface_style: conversation
+    source: private-brain-public
+    source_scope: local
+    classification: internal
+    doc_category: engineering
+    provenance: repo_config
+    retrieval_eligible: true
+    trust_tier: T1
+
+metadata_required:
+  - program_context
+  - subsystem
+  - runtime_class
+  - ipc_model
+  - language
+  - interface_style
+  - source
+  - source_scope
+  - classification
+  - doc_category
+  - provenance
+  - ingest_run_id
+  - retrieval_eligible
+  - trust_tier
+
+typed_nodes:
+  - Application
+  - Service
+  - CodeModule
+  - CodeUnit
+  - InterfaceDefinition
+  - PubSubTopic
+  - RESTEndpoint
+  - MessageQueue
+  - HardwareInterface
+  - RTOSTask
+  - Requirement
+  - CustomerRequirement
+  - TestCase
+  - Story
+  - Dataflow
+  - Document
+  - ExternalLibrary
+  - Page
+  - Chunk
+  - LocalExport
+
+typed_edges:
+  - PART_OF
+  - CONTAINS
+  - CALLS
+  - IMPORTS
+  - DEPENDS_ON
+  - PUBLISHES_TO
+  - SUBSCRIBES_FROM
+  - HAS_SCHEMA
+  - EXPOSES
+  - IMPLEMENTS
+  - SATISFIES
+  - TRACES_TO
+  - TESTED_BY
+  - DOCUMENTS
+  - DEFINED_IN
+  - FLOWS_TO
+  - RELATED_TO
+  - HAS_CHUNK
+
+edge_required_fields:
+  - provenance
+  - extraction_method
+  - ingest_run_id
+  # confidence required when extraction_method is llm

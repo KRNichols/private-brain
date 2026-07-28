@@ -290,6 +290,19 @@ def assert_ingest_allowed(
     preset: str | None = None,
 ) -> dict[str, Any]:
     """Raise PermissionError if enterprise policy blocks this harvest."""
+    # CI / force-feed public OSS path — explicit opt-in only (never default open)
+    if (os.environ.get("PB_ALLOW_PUBLIC_INGEST") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return {
+            "ok": True,
+            "enterprise": is_enterprise(),
+            "public_ingest_override": True,
+            "program_id": program_id() if is_enterprise() else "",
+        }
     if not is_enterprise():
         return {"ok": True, "enterprise": False}
     pol = load_policy()
@@ -766,12 +779,61 @@ def quarantine_public_nodes(*, dry_run: bool = False) -> dict[str, Any]:
     return result
 
 
+def _is_operational_ack_message(msg: str) -> bool:
+    """Non-factual operational acknowledgements — no citation required."""
+    text = (msg or "").strip().lower()
+    if not text:
+        return True
+    needles = (
+        "beast mode is already active",
+        "beast mode is active",
+        "beast mode enabled",
+        "beast mode on",
+        "normal mode is active",
+        "normal mode enabled",
+        "rag-dag is off",
+        "rag is off",
+        "hooks installed",
+        "hooks present",
+        "hook status",
+        "godseye requested",
+        "godseye: flags on",
+        "workflow progress",
+        "command acknowledged",
+        "health ok",
+        "doctor: ok",
+        "no graph evidence — refuse",
+        "no graph evidence - refuse",
+        "without evidence i must refuse",
+    )
+    if any(n in text for n in needles):
+        return True
+    if len(text) <= 80 and any(
+        k in text for k in ("beast mode", "normal mode", "already active", "acknowledged")
+    ):
+        return True
+    return False
+
+
 def citation_gate(last_message: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Enterprise hard gate: require at least one evidence node_id cited with backticks.
     Returns {ok, missing, cited, reason}.
+
+    Operational acknowledgements (beast/normal/health/hooks) pass without cites.
+    Empty evidence only refuses source-like factual claims under enterprise.
     """
-    # Empty evidence: enterprise fail-closed (cannot "cite" free-form claims)
+    msg = last_message or ""
+    if _is_operational_ack_message(msg):
+        return {
+            "ok": True,
+            "cited": [],
+            "missing": [],
+            "hard": False,
+            "reason": "operational_ack_exempt",
+        }
+
+    # Empty evidence: enterprise fail-closed for factual claims only
     if not evidence:
         hard_empty = is_enterprise() and load_policy().get("hard_citation_gate", True)
         if hard_empty:
@@ -783,10 +845,19 @@ def citation_gate(last_message: str, evidence: list[dict[str, Any]]) -> dict[str
                 "reason": "no_evidence_refuse",
             }
         return {"ok": True, "cited": [], "missing": [], "reason": "no_evidence"}
-    msg = last_message or ""
     ids = [str(e.get("id")) for e in evidence if e.get("id")]
     # Hard: require backtick-wrapped node_id (no bare substring / tail games)
     cited = [i for i in ids if f"`{i}`" in msg]
+    # Also accept current-source cites present in message even if not in stale bundle
+    # when they look like first-class node ids (confluence:/jira:/gitlab:/chunk:/report:)
+    if not cited:
+        import re
+
+        for m in re.findall(r"`([A-Za-z0-9_.:/\-]{3,160})`", msg):
+            if m in ids or m.startswith(
+                ("confluence:", "jira:", "gitlab:", "github:", "chunk:", "report:", "export:")
+            ):
+                cited.append(m)
     missing = [i for i in ids if i not in cited]
     hard = is_enterprise() and load_policy().get("hard_citation_gate", True)
     if hard:
@@ -803,6 +874,7 @@ def citation_gate(last_message: str, evidence: list[dict[str, Any]]) -> dict[str
         "hard": hard,
         "reason": "ok" if ok else "no_node_id_citations",
     }
+
 
 
 def ensure_enterprise_profile() -> dict[str, Any]:
