@@ -44,9 +44,9 @@ except ImportError:
 
 
 # ── Viz capacity caps ────────────────────────────────────────────────────────
-LAYOUT_MAX = 400          # light polish only (islands are structured, not a force-box)
+LAYOUT_MAX = 400          # light polish only (circular islands, not a force-box)
 LAYOUT_PAIR_K = 12
-LAYOUT_SETTLE_TICKS = 35  # brief polish then freeze — no square fill
+LAYOUT_SETTLE_TICKS = 35  # brief polish; product law is continuous live
 DRAW_NODES = 10000
 DRAW_EDGES = 12000
 SNAPSHOT_VIZ_MAX = 10000
@@ -335,6 +335,8 @@ class LiveState:
         self.edges: list[dict] = []
         self.pos: dict[str, list[float]] = {}
         self.vel: dict[str, list[float]] = {}
+        # Soft home targets (circular seed) — live polish springs back so shape stays round
+        self.home: dict[str, list[float]] = {}
         self.snap_mtime = 0.0
         self.dag_mtime = 0.0
         self.events_offset = 0
@@ -494,6 +496,7 @@ class LiveState:
             if nid not in self.nodes:
                 del self.pos[nid]
                 self.vel.pop(nid, None)
+                self.home.pop(nid, None)
         self._rebuild_adjacency()
         # Keep selection if still present; refresh trail
         if self.selected and self.selected in self.nodes:
@@ -624,17 +627,16 @@ class LiveState:
         return f"{title}\n(source={n.get('source')} type={n.get('type')} tier={n.get('tier')})\ntags: {tags or '—'}\n(no content file on disk)"
 
     def _seed_island_positions(self, nids: list[str], w: float, h: float) -> None:
-        """Constellation of source islands with empty space between — never a filled square.
+        """Circular constellation of source islands — never a rectangular box fill.
 
-        Each source (gitlab/jira/…) gets its own island center on a loose grid.
-        Nodes pack inside that island via a golden-angle disk. Gaps between islands
-        stay empty so the graph reads as structure, not a carpet of dots.
+        Island centers sit on concentric rings around the graph midpoint (symmetric).
+        Within each island, nodes pack as a golden-angle (Vogel) disk so each cluster
+        is round. Soft home targets keep live polish from drifting into a square.
         """
         by_src: dict[str, list[str]] = defaultdict(list)
         for nid in nids:
             n = self.nodes.get(nid) or {}
             src = str(n.get("source") or "unknown")
-            # Split huge sources into sub-islands so one source can't become a slab
             by_src[src].append(nid)
 
         # Build island list: split any source with many nodes into chunks
@@ -658,33 +660,72 @@ class LiveState:
                     islands.append((f"{src}·{p+1}", members[p * chunk : (p + 1) * chunk]))
 
         n_islands = max(1, len(islands))
-        # Grid of island centers with padding — empty gutters between cells
-        aspect = w / max(h, 1.0)
-        cols = max(1, int(math.ceil(math.sqrt(n_islands * aspect))))
-        rows = max(1, int(math.ceil(n_islands / cols)))
-        pad_x, pad_y = w * 0.06, h * 0.07
-        cell_w = (w - 2 * pad_x) / cols
-        cell_h = (h - 2 * pad_y) / rows
-        # Island radius leaves ~35% gutter empty between neighbors
-        island_r = 0.33 * min(cell_w, cell_h)
+        cx, cy = w * 0.5, h * 0.5
+        # Usable radius inside the panel (circular, not rectangular cell grid)
+        R = 0.42 * min(w, h)
         golden = math.pi * (3.0 - math.sqrt(5.0))
+
+        # Island centers on concentric rings (1 island = dead center) — radial symmetry
+        centers: list[tuple[float, float]] = []
+        if n_islands == 1:
+            centers = [(cx, cy)]
+        else:
+            remaining = n_islands
+            # Center seed when enough islands so the middle is not a hole
+            if n_islands >= 7:
+                centers.append((cx, cy))
+                remaining -= 1
+            # How many rings will we need? (capacity 6, 12, 18, …)
+            rings_needed = 0
+            rem = remaining
+            while rem > 0:
+                rings_needed += 1
+                rem -= 6 * rings_needed
+            ring = 0
+            while remaining > 0:
+                ring += 1
+                take = min(remaining, 6 * ring)
+                # Even radial steps so outer ring is the largest circle
+                ring_r = R * (0.58 if rings_needed == 1 else (ring / rings_needed) * 0.90)
+                # Equal angles + phase offset so rings don't form a rectangle lattice
+                phase = (ring * 0.37) + (math.pi / take if ring % 2 == 0 else 0.0)
+                for k in range(take):
+                    a = phase + (2.0 * math.pi * k) / take
+                    centers.append((cx + ring_r * math.cos(a), cy + ring_r * math.sin(a)))
+                remaining -= take
+
+        # Island disk radius from nearest-neighbor spacing (keeps round clusters + gutters)
+        if n_islands == 1:
+            island_r = R * 0.92
+        else:
+            min_d = float("inf")
+            for i in range(len(centers)):
+                x1, y1 = centers[i]
+                for j in range(i + 1, len(centers)):
+                    x2, y2 = centers[j]
+                    d = math.hypot(x1 - x2, y1 - y2)
+                    if d < min_d:
+                        min_d = d
+            # ~38% of spacing → circular islands with visible empty space between
+            island_r = max(28.0, 0.38 * (min_d if math.isfinite(min_d) else R))
+            island_r = min(island_r, R * 0.45)
 
         for ii, (_label, members) in enumerate(islands):
             if not members:
                 continue
-            col = ii % cols
-            row = ii // cols
-            icx = pad_x + cell_w * (col + 0.5)
-            icy = pad_y + cell_h * (row + 0.5)
+            icx, icy = centers[ii]
             n = len(members)
             for j, nid in enumerate(members):
-                # Fibonacci disk inside island — density falls toward rim
-                r = island_r * math.sqrt((j + 0.5) / n)
+                # Fibonacci / Vogel disk — equal-area circular packing
+                r = island_r * math.sqrt((j + 0.5) / max(n, 1))
                 a = j * golden
                 # Tiny tier offset: T0 slightly inward, T3 slightly out
                 tier = str((self.nodes.get(nid) or {}).get("tier") or "T3")
                 r *= 0.88 + 0.04 * _TIER_RANK.get(tier, 3)
-                self.pos[nid] = [icx + r * math.cos(a), icy + r * math.sin(a)]
+                x = icx + r * math.cos(a)
+                y = icy + r * math.sin(a)
+                self.pos[nid] = [x, y]
+                self.home[nid] = [x, y]
                 self.vel[nid] = [0.0, 0.0]
 
     def reload_dag(self, path: Path) -> None:
@@ -921,15 +962,16 @@ class LiveState:
         self.vector_stats = {"vectors": n, "vocab_terms": terms, "algo": "tfidf-l2-v1"}
 
     def request_relayout(self) -> None:
-        """User pressed R — rebuild constellation islands; stay LIVE."""
+        """User pressed R — rebuild circular constellation; stay LIVE."""
         self.pos.clear()
         self.vel.clear()
+        self.home.clear()
         self.layout_energy = 0.0
         self.snap_mtime = 0  # force reload + reseed
         self.layout_frozen = False
         self.layout_ticks = 0
         self._settle_then_freeze = False
-        self.event_log.appendleft("layout  live reshuffle")
+        self.event_log.appendleft("layout  live circular reshuffle")
 
     def begin_settle(self) -> None:
         """Resume continuous live layout (used after pause / reshuffle)."""
@@ -971,17 +1013,24 @@ class LiveState:
         # Never auto-freeze — continuous live is the product law
 
     def _step_layout_inner(self) -> None:
-        """Very light local polish only — never expand-to-fill or wall-pack a square."""
+        """Light circular polish: de-overlap + spring-to-home so shape stays round, not boxy."""
         ids = [i for i in self.nodes.keys() if i in self.pos]
         if not ids:
             return
+        cx, cy = self.layout_w * 0.5, self.layout_h * 0.5
+        # Soft circular world bound (keeps constellation from squaring into the panel)
+        bound_r = 0.48 * min(self.layout_w, self.layout_h)
         for nid in ids:
             p = self.pos.get(nid)
             if not p or not (math.isfinite(p[0]) and math.isfinite(p[1])):
-                self.pos[nid] = [self.layout_w * 0.5, self.layout_h * 0.5]
+                hx, hy = (self.home.get(nid) or [cx, cy])[:2]
+                self.pos[nid] = [hx, hy]
                 self.vel[nid] = [0.0, 0.0]
             elif nid not in self.vel:
                 self.vel[nid] = [0.0, 0.0]
+            if nid not in self.home:
+                # Late arrivals: home = current so we don't yank them
+                self.home[nid] = [self.pos[nid][0], self.pos[nid][1]]
         if len(ids) > LAYOUT_MAX:
             ids = random.sample(ids, LAYOUT_MAX)
 
@@ -1010,10 +1059,22 @@ class LiveState:
         for nid in ids:
             if nid not in self.vel or nid not in self.pos:
                 continue
-            vx = self.vel[nid][0] * 0.7
-            vy = self.vel[nid][1] * 0.7
-            self.vel[nid][0] = max(-8.0, min(8.0, vx))
-            self.vel[nid][1] = max(-8.0, min(8.0, vy))
+            # Soft spring back to circular home (prevents rectangular drift)
+            hx, hy = self.home.get(nid) or [cx, cy]
+            px, py = self.pos[nid]
+            self.vel[nid][0] += (hx - px) * 0.04
+            self.vel[nid][1] += (hy - py) * 0.04
+            # Soft radial bound — circular, not axis-aligned box walls
+            dx, dy = px - cx, py - cy
+            dist = math.hypot(dx, dy)
+            if dist > bound_r and dist > 1e-6:
+                pull = (dist - bound_r) * 0.06
+                self.vel[nid][0] -= (dx / dist) * pull
+                self.vel[nid][1] -= (dy / dist) * pull
+            vx = self.vel[nid][0] * 0.72
+            vy = self.vel[nid][1] * 0.72
+            self.vel[nid][0] = max(-6.0, min(6.0, vx))
+            self.vel[nid][1] = max(-6.0, min(6.0, vy))
             self.pos[nid][0] += self.vel[nid][0]
             self.pos[nid][1] += self.vel[nid][1]
             energy += abs(self.vel[nid][0]) + abs(self.vel[nid][1])
