@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "id": "export:sim:good:1",
+      "type": "LocalExport",
+      "approved_relative_path": "docs/a.md",
+      "source_alias": "sim-a"
+    },
+    {
+      "id": "export:sim:good:2",
+      "type": "LocalExport",
+      "approved_relative_path": "docs/b.md",
+      "source_alias": "sim-b"
+    }
+  ]
+}

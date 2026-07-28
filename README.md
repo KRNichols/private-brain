@@ -515,7 +515,29 @@ This section is the **test plan + orchestration brief** after the developer-issu
 | Full program metadata on every node | Schema file exists; not every historical node is backfilled |
 | Corporate hosts/tokens | Heal/ask once — never invent |
 
-**Ready to test on the golden Windows laptop when:** latest READY zip (or main ≥ `364093e`) is installed, Codex **0.144.x** is present, and you can run PowerShell + paste outputs into a **browser** GPT 5.6 thread (5.6 does **not** run inside Codex CLI).
+**Ready to test on the golden Windows laptop when:** latest READY zip is installed, Codex **0.144.x** is present, **Windows Release MVP is green for that SHA**, and you can run PowerShell + paste outputs into a **browser** GPT 5.6 thread (5.6 does **not** run inside Codex CLI).
+
+### Laptop sim (no AppGate, no real `~/.codex`, no product debt)
+
+Isolated fixture harness reproduces developer-issues gates with synthetic graph data only:
+
+```bash
+# from repo root (CI also runs this inside Windows Release MVP)
+python scripts/laptop_sim_harness.py
+# report: e2e-reports/LAPTOP_SIM.json  ·  home: .codex-sim/run-*
+```
+
+| What it proves | How |
+|----------------|-----|
+| `.cmd` wrappers + local-rag install | `install_hooks` / `install_local_rag` in temp home |
+| SessionStart / UPS budgets | Pipe JSON into hooks; wall-clock gates |
+| Stop ops + cite + report evidence | Fixture `current_evidence` / `last_dag` |
+| Donut page chunks + rechunk empty→filled | Local `write_node` + `confluence_page_rechunk` |
+| GodsEye enabled, not running (honest) | Flag file + `status --json` |
+| Neo path false-positive | Fixture LocalExport without `approved_relative_path` |
+| Retrieve donut without network crawl | `dag_turn(..., allow_crawl=False)` |
+
+Does **not** replace one real Windows laptop pass with AppGate. Does **not** soft-pass. Does **not** write into your real Codex home (refuses `~/.codex` unless `PB_LAPTOP_SIM_ALLOW_REAL_HOME=1`).
 
 ---
 

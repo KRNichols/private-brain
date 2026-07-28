@@ -1,0 +1,19 @@
+{
+  "retrieve": {
+    "evidence": [
+      {
+        "id": "confluence:page:633240886",
+        "tier": "T0",
+        "source": "confluence"
+      },
+      {
+        "id": "test:node:fixture",
+        "tier": "T1",
+        "source": "fixture"
+      }
+    ]
+  },
+  "boot": {
+    "nodes": 2
+  }
+}

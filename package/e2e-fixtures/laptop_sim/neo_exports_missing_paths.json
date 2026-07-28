@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {
+      "id": "export:sim:1",
+      "type": "LocalExport",
+      "source_alias": "sim-a"
+    },
+    {
+      "id": "export:sim:2",
+      "type": "LocalExport",
+      "source_alias": "sim-b"
+    }
+  ]
+}

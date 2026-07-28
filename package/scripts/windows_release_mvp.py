@@ -119,6 +119,7 @@ def _sync_brain(brain: Path) -> None:
         "installers",
         "loop_graph_harness",
         "local-rag",
+        "e2e-fixtures",
         ".github",
     ):
         src = ROOT / rel
@@ -185,6 +186,8 @@ def phase0_lint() -> None:
         "godseye.py",
         "zero_soft.py",
         "merge_codex_config.py",
+        "laptop_sim_harness.py",
+        "confluence_page_rechunk.py",
     ]
     missing = [m for m in required if not (SCRIPTS / m).is_file()]
     gate("required_scripts_present", not missing, f"missing={missing}")
@@ -196,6 +199,11 @@ def phase0_lint() -> None:
         str(lr),
     )
     gate("programs_yaml_present", (ROOT / "config" / "programs.yaml").is_file())
+    gate(
+        "laptop_sim_fixtures",
+        (ROOT / "e2e-fixtures" / "laptop_sim" / "donut_page_body.md").is_file(),
+        "e2e-fixtures/laptop_sim required for isolated laptop sim",
+    )
 
 
 def phase1_layout(codex: Path, brain: Path) -> None:
@@ -871,6 +879,39 @@ def phase9_agents(brain: Path) -> None:
     gate("capacity_max_agents_64", os.environ.get("PB_MAX_AGENTS") == "64")
 
 
+def phase9b_laptop_sim() -> None:
+    """Isolated laptop sim — fixture hard gates, no AppGate, no real ~/.codex."""
+    print("\n=== P9b LAPTOP SIM HARNESS ===", flush=True)
+    env = os.environ.copy()
+    env["PB_ENTERPRISE"] = "1"
+    env["PB_CI"] = "1"
+    env["PB_ZERO_SOFT"] = "1"
+    env["PB_LOCAL_RAG_MOCK"] = "1"
+    env["PB_GODSEYE"] = "0"
+    # Always isolated under repo .codex-sim (never real user home)
+    env["PB_LAPTOP_SIM_HOME"] = str(ROOT / ".codex-sim" / "mvp-ci")
+    env.pop("PB_LAPTOP_SIM_ALLOW_REAL_HOME", None)
+    sp = SCRIPTS / "laptop_sim_harness.py"
+    if not sp.is_file():
+        gate("laptop_sim_harness", False, "missing laptop_sim_harness.py")
+        return
+    r = _run([sys.executable, str(sp)], env=env, timeout=600, cwd=ROOT)
+    gate("laptop_sim_harness", r.returncode == 0, (r.stdout or r.stderr or "")[-500:])
+    rep = ROOT / "e2e-reports" / "LAPTOP_SIM.json"
+    if rep.is_file():
+        try:
+            d = json.loads(rep.read_text(encoding="utf-8"))
+            gate(
+                "laptop_sim_report_ok",
+                d.get("ok") is True and int(d.get("fail") or 0) == 0,
+                f"pass={d.get('pass')} fail={d.get('fail')}",
+            )
+        except Exception as e:
+            gate("laptop_sim_report_ok", False, str(e))
+    else:
+        gate("laptop_sim_report_ok", False, "LAPTOP_SIM.json missing")
+
+
 def phase10_e2e_suite(brain: Path) -> None:
     print("\n=== P10 FULL E2E SUITE ===", flush=True)
     env = os.environ.copy()
@@ -980,6 +1021,7 @@ def main() -> int:
         phase7_crawlers(brain)
         phase8_ingestors(brain)
         phase9_agents(brain)
+        phase9b_laptop_sim()
         phase10_e2e_suite(brain)
     except Exception as e:
         gate("mvp_uncaught", False, str(e))
