@@ -661,9 +661,12 @@ class LiveState:
 
         n_islands = max(1, len(islands))
         cx, cy = w * 0.5, h * 0.5
-        # Usable radius inside the panel (circular, not rectangular cell grid)
-        R = 0.42 * min(w, h)
+        # Usable radius: spread islands wider so each "universe" has room to breathe
+        R = 0.46 * min(w, h)
         golden = math.pi * (3.0 - math.sqrt(5.0))
+        # Personal space: exclusive zone ≈ 2× island disk → centers ≥ 4× island_r apart
+        # (edge-to-edge gap ≈ 2× island diameter = "double universe" separation)
+        UNIVERSE_SEP = 2.0  # gap between rims in units of island radius
 
         # Island centers on concentric rings (1 island = dead center) — radial symmetry
         centers: list[tuple[float, float]] = []
@@ -685,8 +688,8 @@ class LiveState:
             while remaining > 0:
                 ring += 1
                 take = min(remaining, 6 * ring)
-                # Even radial steps so outer ring is the largest circle
-                ring_r = R * (0.58 if rings_needed == 1 else (ring / rings_needed) * 0.90)
+                # Push rings outward — more angular chord length between neighbors
+                ring_r = R * (0.72 if rings_needed == 1 else (ring / rings_needed) * 0.94)
                 # Equal angles + phase offset so rings don't form a rectangle lattice
                 phase = (ring * 0.37) + (math.pi / take if ring % 2 == 0 else 0.0)
                 for k in range(take):
@@ -694,9 +697,9 @@ class LiveState:
                     centers.append((cx + ring_r * math.cos(a), cy + ring_r * math.sin(a)))
                 remaining -= take
 
-        # Island disk radius from nearest-neighbor spacing (keeps round clusters + gutters)
+        # Island disk radius from nearest-neighbor spacing + double-universe gap
         if n_islands == 1:
-            island_r = R * 0.92
+            island_r = R * 0.88
         else:
             min_d = float("inf")
             for i in range(len(centers)):
@@ -706,9 +709,11 @@ class LiveState:
                     d = math.hypot(x1 - x2, y1 - y2)
                     if d < min_d:
                         min_d = d
-            # ~38% of spacing → circular islands with visible empty space between
-            island_r = max(28.0, 0.38 * (min_d if math.isfinite(min_d) else R))
-            island_r = min(island_r, R * 0.45)
+            # min_d = 2*island_r + UNIVERSE_SEP*island_r  →  island_r = min_d / (2 + SEP)
+            # SEP=2 → island_r = min_d/4  (gap = 2*island_r = one full extra "universe")
+            denom = 2.0 + UNIVERSE_SEP
+            island_r = max(22.0, (min_d if math.isfinite(min_d) else R) / denom)
+            island_r = min(island_r, R * 0.32)
 
         for ii, (_label, members) in enumerate(islands):
             if not members:
