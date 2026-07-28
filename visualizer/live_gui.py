@@ -1827,32 +1827,120 @@ def jobs_overlay(
         draw_text(screen, font_xs, "Tip: Rerun concert = full swarm+retrieve DAG", box.x + pad, box.bottom - 22, TEXT_MUTED)
 
 
+def _draw_key_chip(screen, font_xs, key: str, x: int, y: int, *, fill=PANEL_2, border=BORDER) -> int:
+    """Draw a compact keyboard key badge; returns width used."""
+    pad_x, pad_y = 6, 3
+    tw, th = font_xs.size(key)
+    w, h = tw + pad_x * 2, th + pad_y * 2
+    r = pygame.Rect(x, y, w, h)
+    pygame.draw.rect(screen, fill, r, border_radius=4)
+    pygame.draw.rect(screen, border, r, 1, border_radius=4)
+    draw_text(screen, font_xs, key, x + pad_x, y + pad_y, TEXT)
+    return w
+
+
 def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
+    """Centered help modal — sections, key chips, no dump under the health bar."""
     overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 180))
+    overlay.fill((0, 0, 0, 170))
     screen.blit(overlay, (0, 0))
-    box = pygame.Rect(W // 2 - 340, 40, 680, min(H - 80, 560))
-    rounded_panel(screen, box, PANEL, GREEN, 12)
-    draw_text(screen, font, "HELP · what the colors mean", box.x + 20, box.y + 16, TEXT)
-    # mini traffic lights
-    lx = box.x + 20
-    ly = box.y + 48
+    box_w = min(720, W - 48)
+    box_h = min(H - 64, 580)
+    box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
+    rounded_panel(screen, box, PANEL, ACCENT, 14)
+    # Header band
+    hdr = pygame.Rect(box.x, box.y, box.w, 48)
+    pygame.draw.rect(screen, PANEL_2, hdr, border_radius=14)
+    # square bottom of header
+    pygame.draw.rect(screen, PANEL_2, (hdr.x, hdr.y + 20, hdr.w, 28))
+    pygame.draw.line(screen, BORDER, (box.x, hdr.bottom), (box.right, hdr.bottom), 1)
+    draw_text(screen, font, "Help", box.x + 22, box.y + 14, TEXT)
+    draw_text(screen, font_xs, "H or Esc to close", box.right - 130, box.y + 18, TEXT_MUTED)
+
+    pad = 22
+    col_w = (box.w - pad * 3) // 2
+    left_x = box.x + pad
+    right_x = box.x + pad + col_w + pad
+    y0 = hdr.bottom + 16
+
+    # ── Left: colors + status ──
+    y = y0
+    draw_text(screen, font_sm, "TRAFFIC LIGHTS", left_x, y, TEXT_DIM)
+    y += 22
     for lab, col, meaning in [
         ("GREEN", GREEN, "GO — ok / healthy / done"),
-        ("YELLOW", YELLOW, "CAUTION — running / soft warn"),
+        ("YELLOW", YELLOW, "CAUTION — running / warn"),
         ("RED", RED, "STOP — failed / critical"),
         ("GRAY", GRAY, "IDLE — pending or skipped"),
     ]:
-        pygame.draw.circle(screen, col, (lx + 8, ly + 7), 7)
-        draw_text(screen, font_sm, f"{lab}: {meaning}", lx + 24, ly, TEXT)
-        ly += 22
-    ly += 8
-    for line in HELP_LINES[6:]:
-        draw_text(screen, font_xs, line, box.x + 20, ly, TEXT_DIM if line else TEXT_MUTED)
-        ly += 16
-        if ly > box.bottom - 30:
-            break
-    draw_text(screen, font_xs, "Press H again to close", box.x + 20, box.bottom - 28, TEXT_MUTED)
+        pygame.draw.circle(screen, col, (left_x + 8, y + 7), 6)
+        draw_text(screen, font_sm, lab, left_x + 22, y, TEXT)
+        draw_text(screen, font_xs, meaning, left_x + 78, y + 1, TEXT_MUTED)
+        y += 22
+    y += 10
+    draw_text(screen, font_sm, "HEALTH STRIP", left_x, y, TEXT_DIM)
+    y += 20
+    for line in (
+        "Top-right badge = overall concert health",
+        "Healthy = no FAIL stages right now",
+        "Caution = stages still running",
+        "Unhealthy = one or more FAIL",
+    ):
+        draw_text(screen, font_xs, line, left_x, y, TEXT_MUTED)
+        y += 16
+    y += 10
+    draw_text(screen, font_sm, "GRAPH", left_x, y, TEXT_DIM)
+    y += 20
+    for line in (
+        "Fill = tier (T0 best … T3 low)",
+        "Ring = source (gitlab / jira / …)",
+        "Hover node · click for origin trail",
+        "Drag pan · wheel zoom · R reshuffle",
+    ):
+        draw_text(screen, font_xs, line, left_x, y, TEXT_MUTED)
+        y += 16
+
+    # ── Right: keys + jobs ──
+    y = y0
+    draw_text(screen, font_sm, "KEYBOARD", right_x, y, TEXT_DIM)
+    y += 24
+    key_rows = [
+        ("H", "Help (this panel)"),
+        ("J", "Jobs menu — concert / doctor"),
+        ("C", "Config — swarm size, crawl"),
+        ("Space", "Pause / resume live layout"),
+        ("R", "Reshuffle circular islands"),
+        ("S", "Reload graph snapshot"),
+        ("1 / 2 / 3", "Focus graph · pipeline · metrics"),
+        ("[ ]", "Walk origin trail root ↔ leaf"),
+        ("Q / Esc", "Quit (or close menu)"),
+    ]
+    for key, desc in key_rows:
+        kw = _draw_key_chip(screen, font_xs, key, right_x, y - 1, fill=(32, 36, 48), border=BORDER)
+        draw_text(screen, font_xs, desc, right_x + kw + 10, y + 2, TEXT_DIM)
+        y += 26
+    y += 8
+    draw_text(screen, font_sm, "SWARM NOTE", right_x, y, TEXT_DIM)
+    y += 18
+    for line in (
+        "PB_SWARM_AGENTS = local graph workers",
+        "Not Grok / Codex chat agents",
+        "Set 16 / 32 / 64 in Config",
+    ):
+        draw_text(screen, font_xs, line, right_x, y, TEXT_MUTED)
+        y += 16
+
+    # Footer
+    foot = box.bottom - 36
+    pygame.draw.line(screen, BORDER, (box.x + 16, foot - 8), (box.right - 16, foot - 8), 1)
+    draw_text(
+        screen,
+        font_xs,
+        "Tip: hover the on-disk chip for graph size breakdown · hover stages for encyclopedia",
+        box.x + pad,
+        foot,
+        TEXT_MUTED,
+    )
 
 
 def main() -> int:
@@ -1899,6 +1987,7 @@ def main() -> int:
     close_btn = pygame.Rect(0, 0, 72, 28)  # updated each frame
     jobs_btn = pygame.Rect(0, 0, 72, 28)
     config_btn = pygame.Rect(0, 0, 72, 28)
+    help_btn = pygame.Rect(0, 0, 72, 28)
     job_hitboxes: list[tuple[pygame.Rect, str]] = []
     config_hitboxes: list[tuple[pygame.Rect, str]] = []
     # Load stage config once at start
@@ -1907,10 +1996,14 @@ def main() -> int:
     running = True
     while running:
         TOP, BOT, RIGHT, graph_rect, right_x = layout_rects()
-        # Close + Jobs + Config buttons — top-right
+        # Top-right action cluster (no overlap with health strip)
+        # [Help] [Config] [Jobs] [Healthy……] [× Close]
         close_btn = pygame.Rect(W - 84, 10, 72, 28)
-        jobs_btn = pygame.Rect(W - 168, 10, 72, 28)
-        config_btn = pygame.Rect(W - 252, 10, 72, 28)
+        status_strip_w = min(220, max(160, W // 6))
+        status_strip = pygame.Rect(close_btn.x - status_strip_w - 8, 8, status_strip_w, TOP - 16)
+        jobs_btn = pygame.Rect(status_strip.x - 80, 10, 72, 28)
+        config_btn = pygame.Rect(jobs_btn.x - 80, 10, 72, 28)
+        help_btn = pygame.Rect(config_btn.x - 80, 10, 72, 28)
         now = time.time()
         if now - last_poll > 0.4:
             try:
@@ -2004,6 +2097,13 @@ def main() -> int:
                     # × Close button (always works)
                     if close_btn.collidepoint(event.pos):
                         running = False
+                        break
+                    # Help button — same as H
+                    if help_btn.collidepoint(event.pos):
+                        state.show_help = not state.show_help
+                        if state.show_help:
+                            state.show_jobs = False
+                            state.show_config = False
                         break
                     # Config button
                     if config_btn.collidepoint(event.pos):
@@ -2143,29 +2243,25 @@ def main() -> int:
         edges_n = stats.get("viz_edges", len(state.edges))
         vec_n = state.vector_stats.get("vectors", 0)
 
-        # ── TOP BAR (fixed columns — never stack text over KPIs) ──
-        # | brand (200) | KPIs | legend | status strip | × Close |
+        # ── TOP BAR ──
+        # | brand | KPIs | … | Help | Config | Jobs | Healthy | × Close |
+        # (rects already laid out above the event loop — no stacked junk under health)
         pygame.draw.rect(screen, PANEL, (0, 0, W, TOP))
         pygame.draw.line(screen, BORDER, (0, TOP - 1), (W, TOP - 1), 1)
 
-        close_btn = pygame.Rect(W - 84, 10, 72, 28)
-        status_strip_w = min(300, max(200, W // 5))
-        status_strip = pygame.Rect(close_btn.x - status_strip_w - 10, 8, status_strip_w, TOP - 16)
-
-        BRAND_W = 188
-        # Brand column (clipped)
+        BRAND_W = 168
         brand_rect = pygame.Rect(8, 4, BRAND_W, TOP - 8)
         prev = screen.get_clip()
         screen.set_clip(brand_rect)
-        draw_text(screen, font_title, "Private Brain", 12, 8, TEXT)
-        draw_text(screen, font_xs, "Live Ops · CPU view", 12, 32, TEXT_MUTED)
-        motion = "layout: paused" if state.layout_frozen else "layout: LIVE"
-        draw_text(screen, font_xs, motion, 12, 46, TEXT_MUTED if state.layout_frozen else YELLOW)
+        draw_text(screen, font_title, "Private Brain", 12, 10, TEXT)
+        motion = "LIVE" if not state.layout_frozen else "paused"
+        mcol = YELLOW if not state.layout_frozen else TEXT_MUTED
+        draw_text(screen, font_xs, f"Live Ops · {motion}", 12, 36, mcol)
         screen.set_clip(prev)
 
-        # KPIs — start after brand, stop before status strip
-        kx = BRAND_W + 16
-        kpi_max_x = status_strip.x - 8
+        # KPIs stop before the Help button (never under Healthy)
+        kx = BRAND_W + 12
+        kpi_max_x = help_btn.x - 12
         disk_total = int((state.disk_stats or {}).get("graph_total_b") or 0)
         disk_lab = format_bytes(disk_total) if disk_total else "—"
         for label, val, col in [
@@ -2174,23 +2270,49 @@ def main() -> int:
             ("Vectors", vec_n, GREEN),
             ("On disk", disk_lab, YELLOW),
         ]:
-            col_w = 108 if label != "On disk" else 100
+            col_w = 100 if label != "On disk" else 92
             if kx + col_w > kpi_max_x:
                 break
-            draw_text(screen, font_xs, label, kx, 10, TEXT_MUTED)
-            draw_text(screen, font_kpi, str(val), kx, 28, col)
+            draw_text(screen, font_xs, label, kx, 12, TEXT_MUTED)
+            draw_text(screen, font_kpi, str(val), kx, 30, col)
             kx += col_w
 
-        # Traffic legend if room
-        if kx + 150 < status_strip.x:
-            lx = kx + 4
+        # Compact traffic dots only (no keyboard dump under health)
+        if kx + 100 < help_btn.x:
+            lx = kx + 8
             for col, lab in [(GREEN, "ok"), (YELLOW, "run"), (RED, "fail")]:
-                pygame.draw.circle(screen, col, (lx + 5, 24), 5)
-                draw_text(screen, font_xs, lab, lx + 14, 17, TEXT_MUTED)
-                lx += 48
-            draw_text(screen, font_xs, "H help · J jobs · R re-layout · Space pause", lx + 4, 40, TEXT_MUTED)
+                pygame.draw.circle(screen, col, (lx + 4, 28), 4)
+                draw_text(screen, font_xs, lab, lx + 12, 22, TEXT_MUTED)
+                lx += 42
 
-        # Status strip (right, clipped)
+        def _top_btn(rect: pygame.Rect, label: str, *, active: bool, accent_border: bool = False, hot: bool = False) -> None:
+            fill = ACCENT if (hot or active) else PANEL_2
+            border = ACCENT if (active or accent_border or hot) else BORDER
+            pygame.draw.rect(screen, fill, rect, border_radius=6)
+            pygame.draw.rect(screen, border, rect, 1, border_radius=6)
+            draw_text(
+                screen,
+                font_sm,
+                label,
+                rect.centerx - font_sm.size(label)[0] // 2,
+                rect.y + 6,
+                TEXT,
+            )
+
+        _top_btn(help_btn, "Help", active=state.show_help, hot=help_btn.collidepoint(mx, my))
+        sn = int((state.stage_config or {}).get("swarm_agents") or 16)
+        clab = f"Cfg ×{sn}" if config_btn.w >= 70 else "Config"
+        _top_btn(config_btn, clab, active=state.show_config, hot=config_btn.collidepoint(mx, my))
+        jlab = "… Jobs" if state.job_busy else "Jobs"
+        _top_btn(
+            jobs_btn,
+            jlab,
+            active=state.show_jobs,
+            accent_border=state.job_busy,
+            hot=jobs_btn.collidepoint(mx, my),
+        )
+
+        # Health strip — exclusive column, never under buttons or help text
         running_stages = state.running_stages()
         failed = state.failed_stages()
         ok_n = counts["ok"]
@@ -2198,13 +2320,13 @@ def main() -> int:
         rounded_panel(screen, status_strip, PANEL_2, health_col, 8)
         prev = screen.get_clip()
         screen.set_clip(status_strip.inflate(-4, -4))
-        htxt = ellipsize(font_sm, f"● {health_lab}", status_strip.w - 16)
+        htxt = ellipsize(font_sm, f"● {health_lab}", status_strip.w - 14)
         draw_text(screen, font_sm, htxt, status_strip.x + 10, status_strip.y + 6, health_col)
         if running_stages:
-            pipe_txt = f"Running: {', '.join(running_stages[:3])}"
+            pipe_txt = f"Running: {', '.join(running_stages[:2])}"
             pcol = YELLOW
         elif failed:
-            pipe_txt = f"Failed: {', '.join(failed[:3])}"
+            pipe_txt = f"Failed: {', '.join(failed[:2])}"
             pcol = RED
         else:
             pipe_txt = f"Ready · {ok_n}/{total} green"
@@ -2212,37 +2334,12 @@ def main() -> int:
         draw_text(
             screen,
             font_xs,
-            ellipsize(font_xs, pipe_txt, status_strip.w - 16),
+            ellipsize(font_xs, pipe_txt, status_strip.w - 14),
             status_strip.x + 10,
             status_strip.y + 28,
             pcol,
         )
         screen.set_clip(prev)
-
-        # Config button
-        cfg_fill = ACCENT if (config_btn.collidepoint(mx, my) or state.show_config) else PANEL_2
-        pygame.draw.rect(screen, cfg_fill, config_btn, border_radius=6)
-        pygame.draw.rect(screen, BORDER, config_btn, 1, border_radius=6)
-        clab = "Config"
-        draw_text(
-            screen,
-            font_sm,
-            clab,
-            config_btn.centerx - font_sm.size(clab)[0] // 2,
-            config_btn.y + 6,
-            TEXT,
-        )
-        # swarm badge under config
-        sn = int((state.stage_config or {}).get("swarm_agents") or 16)
-        draw_text(screen, font_xs, f"×{sn}", config_btn.x + 4, config_btn.bottom + 2, TEXT_MUTED)
-
-        # Jobs button (left of Close)
-        jobs_fill = ACCENT if (jobs_btn.collidepoint(mx, my) or state.show_jobs) else PANEL_2
-        pygame.draw.rect(screen, jobs_fill, jobs_btn, border_radius=6)
-        pygame.draw.rect(screen, ACCENT if state.job_busy else BORDER, jobs_btn, 1, border_radius=6)
-        jlab = "… Jobs" if state.job_busy else "Jobs"
-        jx = jobs_btn.centerx - font_sm.size(jlab)[0] // 2
-        draw_text(screen, font_sm, jlab, jx, jobs_btn.y + 6, TEXT)
 
         # × Close
         close_fill = RED if close_btn.collidepoint(mx, my) else PANEL_2
@@ -2588,20 +2685,18 @@ def main() -> int:
                 draw_text(screen, font_xs, line[:52], evp.x + 12, ey, TEXT_MUTED)
                 ey += 15
 
-        # ── BOTTOM ───────────────────────────────────────────────
+        # ── BOTTOM — clean key chips, no wall of text under the UI ──
         pygame.draw.rect(screen, PANEL, (0, H - BOT, W, BOT))
         pygame.draw.line(screen, BORDER, (0, H - BOT), (W, H - BOT), 1)
-        rid = (state.last_run_id or "—")[:24]
-        draw_text(
-            screen,
-            font_xs,
-            f"H help   ·   Space pause/live   ·   R reshuffle   ·   final_ok={state.final_ok}   ·   "
-            f"run={rid}   ·   Q quit",
-            12,
-            H - BOT + 12,
-            TEXT_MUTED,
-        )
-        draw_text(screen, font_xs, time.strftime("%H:%M:%S"), W - 72, H - BOT + 12, TEXT_DIM)
+        rid = (state.last_run_id or "—")[:20]
+        bx = 10
+        by = H - BOT + 8
+        for key in ("H", "J", "C", "R", "Space", "Q"):
+            bx += _draw_key_chip(screen, font_xs, key, bx, by) + 6
+        meta = f"final_ok={state.final_ok}  ·  run={rid}"
+        draw_text(screen, font_xs, meta, bx + 8, by + 3, TEXT_MUTED)
+        clock_s = time.strftime("%H:%M:%S")
+        draw_text(screen, font_xs, clock_s, W - font_xs.size(clock_s)[0] - 14, by + 3, TEXT_DIM)
 
         # Flyouts (after main UI so they sit on top)
         if state.hover_node and state.hover_node in state.nodes:
