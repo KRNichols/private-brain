@@ -498,7 +498,7 @@ This section is the **test plan + orchestration brief** after the developer-issu
 | SessionStart / UPS under timeout | Fast path + deferred work; MVP gates `session_start_under_budget`, `ups_under_budget` |
 | Stop: ops acks + current evidence | Beast/normal acks continue; uncited source claims block; cited Confluence continues |
 | `config.toml` managed keys before tables | `merge_codex_config._prepend_managed_before_first_table` |
-| GodsEye machine-readable status | `godseye.py status --json` (enabled, dismissed, pids, alive, backend, capability, last_error, last_started_at) |
+| GodsEye pygame-only (Mac=Windows look) | `live_gui.py` via `godseye.py` — OpenGL not selected; `status --json` backend=cpu |
 | local-rag product surface | `%USERPROFILE%\.codex\local-rag\` via `install_local_rag.py` + `product_readiness.py` |
 | Canonical diagnostic | `e2e_status_report.py` (read-only; doctor for vectors — no path guesses) |
 | Neo4J path recon honesty | `neoj_path_reconcile.py` — no `preserved_verified` without `approved_relative_path` |

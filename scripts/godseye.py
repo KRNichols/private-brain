@@ -306,43 +306,38 @@ def ensure_gui(*, replace: bool = False, force: bool = False) -> dict:
         ]
     py = next((c for c in candidates if c.exists()), Path(sys.executable))
 
-    # Backend: true OpenGL (graph_gl) vs CPU pygame (live_gui)
-    backend = (os.environ.get("PB_GODSEYE_BACKEND") or "gl").strip().lower()
+    # GodsEye is ONE product surface: pygame live_gui.py on Mac and Windows.
+    # OpenGL graph_gl.py is deprecated and never selected (prevents Mac≠Windows look).
+    # Opt-in only if both PB_GODSEYE_ALLOW_GL=1 and PB_GODSEYE_BACKEND=gl (unsupported).
+    allow_gl = os.environ.get("PB_GODSEYE_ALLOW_GL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    backend = (os.environ.get("PB_GODSEYE_BACKEND") or "cpu").strip().lower()
     gl_path = root / "visualizer" / "graph_gl.py"
     cpu_path = root / "visualizer" / "live_gui.py"
 
-    def _gl_importable() -> bool:
-        try:
-            r = subprocess.run(
-                [str(py), "-c", "from OpenGL.GL import glClear; import pygame"],
-                capture_output=True,
-                timeout=8,
-            )
-            return r.returncode == 0
-        except Exception:
-            return False
-
     gui = None
-    chosen = backend
-    if backend in ("gl", "opengl", "truegl", "gpu"):
-        if gl_path.exists() and _gl_importable():
-            gui = gl_path
-            chosen = "gl"
-        elif cpu_path.exists():
-            gui = cpu_path
-            chosen = "cpu-fallback"
-        else:
-            return {"godseye": True, "gui": "error", "error": "graph_gl.py missing and no live_gui", "reaped": reaped}
-    elif backend in ("cpu", "software", "live_gui"):
-        gui = cpu_path if cpu_path.exists() else gl_path
+    chosen = "cpu"
+    if allow_gl and backend in ("gl", "opengl", "truegl", "gpu") and gl_path.exists():
+        # Unsupported path — kept for emergency only; not default on any OS
+        gui = gl_path
+        chosen = "gl-opt-in"
+    elif cpu_path.exists():
+        gui = cpu_path
         chosen = "cpu"
-    else:  # auto
-        if gl_path.exists() and _gl_importable():
-            gui = gl_path
-            chosen = "gl"
-        else:
-            gui = cpu_path if cpu_path.exists() else gl_path
-            chosen = "cpu"
+    elif gl_path.exists() and allow_gl:
+        gui = gl_path
+        chosen = "gl-opt-in-fallback"
+    else:
+        return {
+            "godseye": True,
+            "gui": "error",
+            "error": "live_gui.py missing — install visualizer/pygame (GodsEye is pygame-only)",
+            "reaped": reaped,
+        }
 
     if not gui or not gui.exists():
         return {"godseye": True, "gui": "error", "error": "no visualizer module", "reaped": reaped}
@@ -364,7 +359,8 @@ def ensure_gui(*, replace: bool = False, force: bool = False) -> dict:
                 **os.environ,
                 "PB_GODSEYE": "1",
                 "PRIVATE_BRAIN_HOME": str(root),
-                "PB_GODSEYE_BACKEND": chosen if chosen.startswith("gl") else os.environ.get("PB_GODSEYE_BACKEND", "gl"),
+                # Always advertise cpu to children unless unsupported gl opt-in
+                "PB_GODSEYE_BACKEND": "gl" if str(chosen).startswith("gl") else "cpu",
             },
         )
         clear_dismissed()
@@ -383,10 +379,11 @@ def ensure_gui(*, replace: bool = False, force: bool = False) -> dict:
 
 
 def _capability_backend() -> dict:
-    """Probe capability without starting GUI."""
+    """Probe capability without starting GUI. GodsEye product backend is pygame/cpu."""
     out = {
-        "backend": os.environ.get("PB_GODSEYE_BACKEND") or "gl",
-        "capability": "unknown",
+        "backend": "cpu",
+        "capability": "software_pygame",
+        "module": "live_gui.py",
         "last_error": None,
     }
     try:
@@ -394,25 +391,45 @@ def _capability_backend() -> dict:
 
         caps = probe() or {}
         feat = caps.get("features") or {}
-        out["capability"] = feat.get("godseye_backend") or feat.get("godseye") or "unknown"
-        if feat.get("godseye_backend") == "off":
-            out["backend"] = "off"
-        elif feat.get("godseye_backend"):
-            out["backend"] = str(feat.get("godseye_backend"))
+        # Product law: cpu/pygame only — ignore stale gl hints unless allow_gl
+        allow_gl = os.environ.get("PB_GODSEYE_ALLOW_GL", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if feat.get("godseye_backend") == "off" or feat.get("pygame") is False:
+            if not feat.get("pygame"):
+                out["backend"] = "off"
+                out["capability"] = "missing_pygame"
+            else:
+                out["backend"] = "cpu"
+                out["capability"] = "software_pygame"
+        else:
+            out["backend"] = "cpu"
+            out["capability"] = str(feat.get("godseye_mode") or "software_pygame")
+            if out["capability"] in ("TRUE_GL", "gl"):
+                out["capability"] = "software_pygame"
+        if allow_gl and os.environ.get("PB_GODSEYE_BACKEND", "").lower() in (
+            "gl",
+            "opengl",
+        ):
+            out["backend"] = "gl-opt-in"
+            out["module"] = "graph_gl.py"
+            out["capability"] = "deprecated_gl_opt_in"
     except Exception as e:
         out["last_error"] = f"capability_probe: {e}"[:200]
-    # pygame/numpy presence
     try:
         import importlib.util
 
         has_pg = importlib.util.find_spec("pygame") is not None
-        has_np = importlib.util.find_spec("numpy") is not None
-        if has_pg and has_np:
-            out.setdefault("capability", "TRUE_GL" if out.get("backend") == "gl" else "cpu")
-            if out.get("capability") == "unknown":
-                out["capability"] = "TRUE_GL"
-        elif not has_pg:
+        if not has_pg:
+            out["backend"] = "off"
             out["capability"] = "missing_pygame"
+        else:
+            out["backend"] = out.get("backend") if out.get("backend") != "off" else "cpu"
+            if out.get("capability") in (None, "unknown", "TRUE_GL", "gl"):
+                out["capability"] = "software_pygame"
     except Exception:
         pass
     return out

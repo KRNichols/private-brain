@@ -161,6 +161,8 @@ def phase0_lint() -> None:
 
     r = _run([sys.executable, str(SCRIPTS / "lint_sanitized_branding.py")], timeout=120)
     gate("lint_branding", r.returncode == 0, (r.stdout or r.stderr or "")[-300:])
+    r = _run([sys.executable, str(SCRIPTS / "lint_release_surface.py")], timeout=60)
+    gate("lint_release_surface", r.returncode == 0, (r.stdout or r.stderr or "")[-400:])
 
     # required operational modules
     required = [
@@ -186,6 +188,7 @@ def phase0_lint() -> None:
         "godseye.py",
         "zero_soft.py",
         "merge_codex_config.py",
+        "lint_release_surface.py",
         "laptop_sim_harness.py",
         "confluence_page_rechunk.py",
     ]

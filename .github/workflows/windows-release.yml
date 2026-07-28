@@ -225,10 +225,19 @@ jobs:
             mkdir -p "$STAGE/tools/install" "$STAGE/tools/engine"
             cp -a installers/windows/. "$STAGE/" 2>/dev/null || true
             cp -a installers/windows/. "$STAGE/tools/install/" 2>/dev/null || true
-            cp -a scripts hooks config agents private_brain package "$STAGE/tools/engine/" 2>/dev/null || true
+            cp -a scripts hooks config agents private_brain package local-rag visualizer "$STAGE/tools/engine/" 2>/dev/null || true
+            # Never ship sim/fixtures/test homes into READY zip
+            rm -rf "$STAGE/tools/engine/e2e-fixtures" "$STAGE/tools/engine/.codex-sim" \
+                   "$STAGE/tools/engine/package/e2e-fixtures" 2>/dev/null || true
+            find "$STAGE" -type d -name 'laptop_sim' -exec rm -rf {} + 2>/dev/null || true
             cp -a installers/shared/ROOT_README.md "$STAGE/README.md" 2>/dev/null || cp README.md "$STAGE/README.md"
             cp -a installers/shared/DIAGRAM.md "$STAGE/DIAGRAM.md" 2>/dev/null || true
             (cd "$STAGE" && zip -r -q "$GITHUB_WORKSPACE/dist/PrivateBrain-WINDOWS-READY.zip" .)
+          fi
+          # Post-mint purge check: zip must not contain e2e-fixtures or .codex-sim
+          if unzip -l dist/PrivateBrain-WINDOWS-READY.zip 2>/dev/null | grep -E 'e2e-fixtures|\.codex-sim|laptop_sim/' ; then
+            echo "ERROR: READY zip contains sim/test paths — refuse ship" >&2
+            exit 1
           fi
           test -f dist/PrivateBrain-WINDOWS-READY.zip
           (cd dist && sha256sum PrivateBrain-WINDOWS-READY.zip > PrivateBrain-WINDOWS-READY.sha256)

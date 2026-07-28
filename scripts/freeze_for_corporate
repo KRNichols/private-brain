@@ -162,8 +162,15 @@ fi
 
 mkdir -p "$PKG" "$DIST" "$PKG/config" "$PKG/scripts" "$PKG/hooks" "$PKG/visualizer"
 
-echo "==> Sync engine live → package (no .brain, no venv)"
+echo "==> Sync engine live → package (no .brain, no venv, no sim/fixtures)"
 _pb_copy_tree "$LIVE/scripts" "$PKG/scripts" --delete --exclude .brain --exclude venv --exclude __pycache__ --exclude "*.pyc" --exclude .DS_Store --exclude corporate.env --exclude day1.env --exclude corporate-package-index.env --exclude "*.env"
+# Never ship test/sim fixtures or leftover sim homes into READY kits
+rm -rf "$PKG/e2e-fixtures" "$PKG/.codex-sim" "$PKG/.codex-ci" 2>/dev/null || true
+rm -f "$PKG/scripts/post_to_x.sh" 2>/dev/null || true
+# laptop_sim_harness stays in public repo for CI but strip fixtures from engine payload
+find "$PKG" -type d -name 'laptop_sim' -exec rm -rf {} + 2>/dev/null || true
+find "$PKG" -type d -name 'e2e-fixtures' -exec rm -rf {} + 2>/dev/null || true
+find "$PKG" -type d -name '.codex-sim' -exec rm -rf {} + 2>/dev/null || true
 # Never ship secrets / local judge dumps
 rm -f "$PKG"/day1.env* "$PKG"/corporate.env* "$PKG"/corporate-package-index.env 2>/dev/null || true
 find "$PKG" \( -name 'day1.env*' -o -name 'corporate.env*' -o -name 'corporate-package-index.env' \) -delete 2>/dev/null || true
@@ -312,7 +319,20 @@ _pb_copy_tree "$TOOLS_SRC" "$dest/tools" --exclude .DS_Store
 
   # ── tools/engine = package payload ──
   mkdir -p "$dest/tools/engine"
-_pb_copy_tree "$PKG" "$dest/tools/engine" --exclude __pycache__ --exclude "*.pyc" --exclude .DS_Store --exclude venv --exclude .brain
+_pb_copy_tree "$PKG" "$dest/tools/engine" --exclude __pycache__ --exclude "*.pyc" --exclude .DS_Store --exclude venv --exclude .brain --exclude e2e-fixtures --exclude .codex-sim --exclude .codex-ci
+  # Hard purge any sim/test surface that slipped into package/
+  rm -rf "$dest/tools/engine/e2e-fixtures" "$dest/tools/engine/.codex-sim" "$dest/tools/engine/.codex-ci" 2>/dev/null || true
+  find "$dest/tools/engine" -type d -name 'laptop_sim' -exec rm -rf {} + 2>/dev/null || true
+  # GodsEye product is pygame live_gui; do not require OpenGL wheels in kit docs/req
+  if [[ -f "$dest/tools/engine/visualizer/requirements.txt" ]]; then
+    # ensure no PyOpenGL pin in shipped requirements
+    grep -v -i 'PyOpenGL\|pyopengl' "$dest/tools/engine/visualizer/requirements.txt" > "$dest/tools/engine/visualizer/requirements.txt.tmp" 2>/dev/null || true
+    if [[ -s "$dest/tools/engine/visualizer/requirements.txt.tmp" ]]; then
+      mv "$dest/tools/engine/visualizer/requirements.txt.tmp" "$dest/tools/engine/visualizer/requirements.txt"
+    else
+      rm -f "$dest/tools/engine/visualizer/requirements.txt.tmp"
+    fi
+  fi
   # deep docs into engine
   mkdir -p "$dest/tools/engine/docs"
   for f in INDEX.md LOOP_GRAPH_SOVEREIGN.md MERMAID.md KINGDOM_KEYS.md GODSEYE_HELP.md; do

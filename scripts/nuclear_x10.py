@@ -353,7 +353,10 @@ def main() -> int:
             gate("E16_engine_smart_discover", any("smart_discover.py" in n for n in names))
             gate("E17_engine_hooks_py", any("tools/engine/hooks/session_start.py" in n for n in names))
             gate("E18_engine_stop_validate", any("stop_validate.py" in n for n in names))
-            gate("E19_engine_graph_gl", any("graph_gl.py" in n for n in names))
+            gate(
+                "E19_engine_live_gui",
+                any("live_gui.py" in n for n in names) or any("visualizer" in n for n in names),
+            )
             gate("E20_golden_example", any("golden_join.example.json" in n for n in names))
             gate("E21_zero_fail_doc", any("ZERO_FAIL" in n for n in names))
             gate("E22_nuclear_script", any("nuclear" in n for n in names))
@@ -498,11 +501,29 @@ def main() -> int:
         gate(f"I_orch_stage_{stg}", stg in src("scripts/orchestrate.py"))
 
     # GodsEye dual help
-    ggl = src("visualizer/graph_gl.py")
-    for k in ("show_inspector", "help_mode", "simple_mode", "no_window_bleed", "_draw_soft_disc", "GL_TRIANGLE_FAN"):
-        gate(f"I_godseye_{k}", k in ggl)
-    gate("I_godseye_always_live", "never auto-settle" in ggl.lower() or "Force continuous live" in ggl or "PB_GODSEYE_ALLOW_SETTLE" in ggl)
-    gate("I_godseye_no_auto_freeze", "self.layout_settled = True" not in ggl)
+    # Product GodsEye is pygame live_gui (identical Mac/Windows). OpenGL is not selected.
+    live = src("visualizer/live_gui.py")
+    ge = src("scripts/godseye.py")
+    org = src("scripts/organism.py")
+    gate("I_godseye_live_gui", "pygame" in live and len(live) > 500)
+    gate("I_godseye_module_live_gui", "live_gui.py" in ge)
+    gate(
+        "I_godseye_cpu_default",
+        'or "cpu"' in ge or 'PB_GODSEYE_BACKEND") or "cpu"' in ge,
+    )
+    gate(
+        "I_godseye_no_default_gl",
+        'setdefault("PB_GODSEYE_BACKEND", "gl")' not in ge
+        and 'setdefault("PB_GODSEYE_BACKEND", "gl")' not in org,
+    )
+    gate(
+        "I_godseye_pygame_only_law",
+        "pygame-only" in ge or ("live_gui" in ge and "cpu" in ge),
+    )
+    gate(
+        "I_godseye_organism_cpu",
+        'setdefault("PB_GODSEYE_BACKEND", "cpu")' in org,
+    )
 
     # conversation router forensics phrases
     cr = src("scripts/conversation_router.py")

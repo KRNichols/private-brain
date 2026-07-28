@@ -204,7 +204,7 @@ def phase_godseye(report: dict[str, Any], quiet: bool, *, no_godseye: bool) -> N
         force = os.environ.get("PB_GODSEYE_FORCE", "") in ("1", "true", "yes")
         ge.set_enabled(True)
         os.environ["PB_GODSEYE"] = "1"
-        os.environ.setdefault("PB_GODSEYE_BACKEND", "gl")
+        os.environ.setdefault("PB_GODSEYE_BACKEND", "cpu")
         out = {}
         if hasattr(ge, "ensure_gui"):
             out = ge.ensure_gui(force=force) or {}

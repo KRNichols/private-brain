@@ -154,11 +154,9 @@ def probe() -> dict[str, Any]:
     has_gl = bool(mods.get("OpenGL", {}).get("ok"))
     has_yaml = bool(mods.get("yaml", {}).get("ok"))
 
-    # Backend selection from *importable* modules only (self-select)
-    if has_pygame and has_gl:
-        godseye_backend = "gl"
-        godseye_mode = "TRUE_GL"
-    elif has_pygame:
+    # GodsEye product law: pygame live_gui only (same Mac/Windows look).
+    # OpenGL may be importable but is never selected for GodsEye.
+    if has_pygame:
         godseye_backend = "cpu"
         godseye_mode = "software_pygame"
     else:
@@ -199,7 +197,7 @@ def probe() -> dict[str, Any]:
             "machine": platform.machine(),
             "is_apple_silicon": is_apple,
             "cuda_usable": cuda_usable,
-            "note": "CUDA is NVIDIA-only; Apple uses Metal via OpenGL for GodsEye draw",
+            "note": "CUDA is NVIDIA-only; GodsEye draw is pygame/CPU (identical Mac/Windows)",
         },
         "environment": env,
         "modules": mods,
@@ -208,10 +206,12 @@ def probe() -> dict[str, Any]:
             "yaml_parser": "pyyaml" if has_yaml else "stdlib_fallback",
             "godseye_backend": godseye_backend,
             "godseye_mode": godseye_mode,
+            "godseye_module": "live_gui.py",
             "layout_accel": layout_accel,
             "numpy": has_numpy,
             "pygame": has_pygame,
-            "opengl": has_gl,
+            "opengl": has_gl,  # detected only; not used by GodsEye
+            "opengl_used_by_godseye": False,
         },
         "selected": selected,
         "pip": {
@@ -440,17 +440,21 @@ def apply_env_hints(report: dict[str, Any] | None = None) -> dict[str, str]:
     r = report or probe()
     feat = r.get("features") or {}
     backend = str(feat.get("godseye_backend") or "off")
-    # Always force backend to match reality (override stale PB_GODSEYE_BACKEND=gl)
-    if backend == "gl":
-        os.environ["PB_GODSEYE_BACKEND"] = "gl"
-    elif backend == "cpu":
+    # Product law: always cpu/pygame for GodsEye (override stale PB_GODSEYE_BACKEND=gl)
+    allow_gl = os.environ.get("PB_GODSEYE_ALLOW_GL", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if backend == "cpu" or (backend == "gl" and not allow_gl):
         os.environ["PB_GODSEYE_BACKEND"] = "cpu"
-        # Don't force GodsEye on if user wanted headless; only fix backend if GUI on
+    elif backend == "gl" and allow_gl:
+        os.environ["PB_GODSEYE_BACKEND"] = "gl"
     else:
-        # no pygame — cannot run GUI; leave PB_GODSEYE as user set but mark backend off
+        # no pygame — cannot run GUI
         os.environ["PB_GODSEYE_BACKEND"] = "off"
         if os.environ.get("PB_GODSEYE") == "1":
-            # soft demote so launchers don't crash spinning missing pygame
             os.environ["PB_GODSEYE"] = "0"
             os.environ["PB_GODSEYE_DEMOTED"] = "1"
     if feat.get("numpy"):
