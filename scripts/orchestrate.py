@@ -1236,13 +1236,21 @@ def dag_concert(prompt: str, allow_crawl: bool = True) -> dict[str, Any]:
 
     boot = run_isolated("boot", stage_boot, agent_id, rid)
 
-    # Optional shared-topology SWARM: N agents on one graph (no queue)
-    # PB_SWARM_AGENTS=32 (default 0=off for speed; set 8-32 for full pizzazz)
+    # Shared-topology SWARM: N agents on one graph (no queue).
+    # Product default: 16 agents. Set PB_SWARM_AGENTS=0 to disable; max 64.
     swarm_result = None
-    try:
-        n_swarm = int(os.environ.get("PB_SWARM_AGENTS") or "0")
-    except ValueError:
+    raw_sw = (os.environ.get("PB_SWARM_AGENTS") or "16").strip().lower()
+    if raw_sw in ("", "auto", "on", "default"):
+        n_swarm = 16
+    elif raw_sw in ("0", "off", "false", "no"):
         n_swarm = 0
+    else:
+        try:
+            n_swarm = int(raw_sw)
+        except ValueError:
+            n_swarm = 16
+    n_swarm = max(0, min(64, n_swarm))
+    os.environ["PB_SWARM_AGENTS"] = str(n_swarm)  # surface for GodsEye config display
     if n_swarm > 0:
         try:
             from agent_swarm import sweep as swarm_sweep
@@ -1276,10 +1284,10 @@ def dag_concert(prompt: str, allow_crawl: bool = True) -> dict[str, Any]:
             "stage": "swarm",
             "ok": True,
             "skipped": True,
-            "reason": "PB_SWARM_AGENTS=0 (pass --swarm N to beastMode)",
+            "reason": "PB_SWARM_AGENTS=0 (explicit off)",
             "n_agents": 0,
         }
-        gui_event("swarm", "skip", "off — beastMode --swarm N")
+        gui_event("swarm", "skip", "off — set PB_SWARM_AGENTS=16")
 
     # Optional LOOP→GRAPH→HARNESS brain fan-out (clean child contexts; parent gets packs only)
     # PB_LGH=0 to disable; default on with 3 token slices.

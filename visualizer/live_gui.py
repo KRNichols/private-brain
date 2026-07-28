@@ -157,6 +157,74 @@ STAGE_LABEL = {
     "optimize": "Graph hygiene / reindex",
     "emit": "Pack context for Codex",
 }
+# Hover encyclopedia: what / why / when (config filled live from env + last_dag)
+STAGE_EXPLAIN: dict[str, dict[str, str]] = {
+    "boot": {
+        "what": "Load graph snapshot, flags, and concert run_id.",
+        "why": "Every concert needs a consistent brain root before agents touch the graph.",
+        "when": "Always — first stage of every concert / dag_turn.",
+    },
+    "swarm": {
+        "what": "N agents write/read one shared topology (no job queue).",
+        "why": "Fan-out retrieval, tagging, linking, and gap-finding in parallel.",
+        "when": "When PB_SWARM_AGENTS>0 (product default 16). Set 0 to skip.",
+    },
+    "cost": {
+        "what": "Budget + crawl rate-limit checks before expensive work.",
+        "why": "Stops unbounded crawl/API spend; enterprise cost law.",
+        "when": "Always early in the concert (after boot/swarm).",
+    },
+    "security": {
+        "what": "Verify append-only audit chain + secret scan posture.",
+        "why": "Fail-closed enterprise: broken chain must not go silent.",
+        "when": "Always before emit; may seal/retry on chain break.",
+    },
+    "retrieve": {
+        "what": "Hybrid graph retrieve (lexical + vectors) into evidence.",
+        "why": "Ground synthesis in real nodes (cite-or-block).",
+        "when": "Always. Thin/empty evidence can re-route to crawl_gap.",
+    },
+    "crawl_gap": {
+        "what": "Bounded crawl/ingest to fill thin evidence.",
+        "why": "Recovery path when retrieve gap=true or empty evidence.",
+        "when": "Only if retrieve is thin AND crawl allowed; else skip (cooldown/budget).",
+    },
+    "validate": {
+        "what": "Gate evidence quality and concert structure.",
+        "why": "Blocks garbage evidence from becoming confident answers.",
+        "when": "Always after retrieve (+ optional crawl re-retrieve).",
+    },
+    "metrics": {
+        "what": "KPIs, signals, planning metrics snapshot.",
+        "why": "Feeds rate band + GodsEye metrics panel.",
+        "when": "Always (parallel with validate).",
+    },
+    "synthesize": {
+        "what": "Build cited bullets from evidence only.",
+        "why": "Human-facing answer material with node_id cites.",
+        "when": "Always after validate when evidence path runs.",
+    },
+    "critic": {
+        "what": "Peer-review synthesis for hallucinations / weak cites.",
+        "why": "Second mind before rate/emit; can demote score.",
+        "when": "Always after synthesize in full concert.",
+    },
+    "rate": {
+        "what": "Score concert quality → band (e.g. SAP_SHIP / PASS / FAIL).",
+        "why": "Decides whether optimize is needed; operator dashboard.",
+        "when": "Always after critic.",
+    },
+    "optimize": {
+        "what": "Graph hygiene / reindex / no-relearn polish.",
+        "why": "Repair weak concerts; avoid churn when already green.",
+        "when": "Only if FAIL/weak score/critic FAIL or PB_ALWAYS_OPTIMIZE=1.",
+    },
+    "emit": {
+        "what": "Pack final context for Codex (hooks inject).",
+        "why": "Hand the model only recovered, cited graph context.",
+        "when": "Always at end of concert when final_ok path completes.",
+    },
+}
 STAGE_COLOR = {
     "pending": GRAY,
     "running": YELLOW,
@@ -651,11 +719,11 @@ class LiveState:
             if data.get("swarm") is None and self.stage_status.get("swarm") in ("pending", "running", None):
                 self.stage_status["swarm"] = "skip"
                 if not self.stage_detail.get("swarm"):
-                    self.stage_detail["swarm"] = "off (need --swarm N)"
+                    self.stage_detail["swarm"] = "off (PB_SWARM_AGENTS=0)"
             if data.get("optimize") is None and self.stage_status.get("optimize") in ("pending", "running", None):
                 self.stage_status["optimize"] = "skip"
                 if not self.stage_detail.get("optimize"):
-                    self.stage_detail["optimize"] = "skip (pass band)"
+                    self.stage_detail["optimize"] = "skip (pass band; set PB_ALWAYS_OPTIMIZE=1)"
             for s in STAGE_ORDER:
                 if self.stage_status.get(s) == "running":
                     self.stage_status[s] = "ok"
@@ -944,15 +1012,53 @@ def rounded_panel(screen, rect: pygame.Rect, fill=PANEL, border=BORDER, radius=1
     pygame.draw.rect(screen, border, rect, 1, border_radius=radius)
 
 
-def flyout(screen, font, font_xs, lines: list[str], mx: int, my: int, W: int, H: int, title: str = "") -> None:
+def flyout(
+    screen,
+    font,
+    font_xs,
+    lines: list[str],
+    mx: int,
+    my: int,
+    W: int,
+    H: int,
+    title: str = "",
+    *,
+    max_line: int = 96,
+    max_width: int = 420,
+) -> None:
     """Draw a floating info card near the cursor (clamped to screen)."""
     pad = 10
     rows = ([title] if title else []) + lines
     if not rows:
         return
-    widths = [font.size(r)[0] if i == 0 and title else font_xs.size(r)[0] for i, r in enumerate(rows)]
-    tw = max(widths) + pad * 2
-    th = pad * 2 + sum((font.get_height() + 4) if (i == 0 and title) else (font_xs.get_height() + 3) for i, _ in enumerate(rows))
+    # Soft wrap long lines for stage encyclopedia
+    wrapped: list[tuple[str, bool]] = []  # (text, is_title)
+    for i, row in enumerate(rows):
+        is_title = i == 0 and bool(title)
+        f = font if is_title else font_xs
+        text = (row or "").replace("\n", " ").strip()
+        if not text:
+            continue
+        # greedy wrap by character budget
+        while text:
+            chunk = text[:max_line]
+            if len(text) > max_line:
+                # break on space if possible
+                sp = chunk.rfind(" ")
+                if sp > 40:
+                    chunk = chunk[:sp]
+            wrapped.append((chunk, is_title))
+            text = text[len(chunk) :].lstrip()
+            is_title = False
+    if not wrapped:
+        return
+    widths = [
+        (font if is_t else font_xs).size(r)[0] for r, is_t in wrapped
+    ]
+    tw = min(max_width, max(widths) + pad * 2)
+    th = pad * 2 + sum(
+        (font.get_height() + 4) if is_t else (font_xs.get_height() + 3) for _, is_t in wrapped
+    )
     x = mx + 16
     y = my + 16
     if x + tw > W - 8:
@@ -967,13 +1073,117 @@ def flyout(screen, font, font_xs, lines: list[str], mx: int, my: int, W: int, H:
     pygame.draw.rect(screen, (0, 0, 0), sh, border_radius=8)
     rounded_panel(screen, rect, PANEL_2, ACCENT, 8)
     cy = y + pad
-    for i, row in enumerate(rows):
-        if i == 0 and title:
-            draw_text(screen, font, row[:70], x + pad, cy, TEXT)
+    for row, is_t in wrapped:
+        if is_t:
+            draw_text(screen, font, row[: max_line + 10], x + pad, cy, TEXT)
             cy += font.get_height() + 4
         else:
-            draw_text(screen, font_xs, row[:90], x + pad, cy, TEXT_DIM)
+            draw_text(screen, font_xs, row[: max_line + 10], x + pad, cy, TEXT_DIM)
             cy += font_xs.get_height() + 3
+
+
+def _stage_config_lines(state: "AppState", stg: str) -> list[str]:
+    """Live configuration + last_dag facts for a stage hover."""
+    env = os.environ
+    dag = state._last_dag_data if isinstance(getattr(state, "_last_dag_data", None), dict) else {}
+    blob = dag.get(stg) if isinstance(dag.get(stg), dict) else None
+    # crawl stored as "crawl" in last_dag sometimes
+    if stg == "crawl_gap" and blob is None and isinstance(dag.get("crawl"), dict):
+        blob = dag.get("crawl")
+    lines: list[str] = []
+    if stg == "swarm":
+        raw = (env.get("PB_SWARM_AGENTS") or "16").strip()
+        lines.append(f"config: PB_SWARM_AGENTS={raw} (default 16, max 64, 0=off)")
+        if blob:
+            lines.append(
+                f"last run: n={blob.get('n_agents') or blob.get('expected') or '—'} "
+                f"ok={blob.get('ok_count') or blob.get('ok')} skipped={blob.get('skipped')} "
+                f"reason={blob.get('reason') or '—'}"
+            )
+        else:
+            lines.append("last run: (no swarm blob in last_dag yet)")
+    elif stg == "crawl_gap":
+        lines.append("config: allow_crawl on full concert; UPS hooks often allow_crawl=False")
+        lines.append("config: min_crawl_interval_sec≈300 (cooldown); cost budget can block")
+        lines.append(f"config: PB_GITLAB_PRESET={env.get('PB_GITLAB_PRESET') or '—'} GITLAB_URL set={bool(env.get('GITLAB_URL'))}")
+        if blob:
+            lines.append(
+                f"last run: skipped={blob.get('skipped')} reason={blob.get('reason') or blob.get('error') or '—'}"
+            )
+    elif stg == "optimize":
+        lines.append("config: runs if band=FAIL or score<6 or critic=FAIL")
+        lines.append(f"config: PB_ALWAYS_OPTIMIZE={env.get('PB_ALWAYS_OPTIMIZE') or '0'}")
+        rate = dag.get("rate") if isinstance(dag.get("rate"), dict) else {}
+        lines.append(
+            f"last rate: band={rate.get('band') or '—'} score={rate.get('concert_score') or '—'}"
+        )
+        if blob:
+            lines.append(
+                f"last run: skipped={blob.get('skipped')} reason={blob.get('reason') or '—'} ok={blob.get('ok')}"
+            )
+    elif stg == "retrieve":
+        lines.append("config: hybrid lexical+vector; enterprise demotes public/swarm noise")
+        if blob:
+            lines.append(f"last run: hits={blob.get('hit_count')} gap={blob.get('gap')} ok={blob.get('ok')}")
+    elif stg == "security":
+        lines.append("config: audit_verify chain; seal-on-break recovery policy")
+        if blob:
+            lines.append(
+                f"last run: chain_ok={blob.get('chain_ok')} events={blob.get('events_checked')} ok={blob.get('ok')}"
+            )
+    elif stg == "cost":
+        lines.append("config: cost state under .brain/state; min crawl interval + budget_ok")
+        if blob:
+            lines.append(f"last run: budget_ok={blob.get('budget_ok')} ok={blob.get('ok')}")
+    elif stg == "boot":
+        lines.append(f"config: PRIVATE_BRAIN_HOME={env.get('PRIVATE_BRAIN_HOME') or 'default ~/.codex/private-brain'}")
+        if blob:
+            lines.append(f"last run: nodes={blob.get('nodes') or (blob.get('boot') or {}).get('nodes')} ok={blob.get('ok')}")
+    elif stg == "rate":
+        if blob:
+            lines.append(f"last run: band={blob.get('band')} score={blob.get('concert_score')} ok={blob.get('ok')}")
+        lines.append("config: folds critic verdict into notes / score demotion")
+    elif stg == "emit":
+        lines.append(f"config: final_ok={dag.get('final_ok')} run_id={dag.get('run_id') or '—'}")
+    elif stg == "validate":
+        if blob:
+            lines.append(f"last run: ok={blob.get('ok')} detail={str(blob.get('reason') or blob.get('error') or '—')[:60]}")
+    elif stg == "critic":
+        if blob:
+            lines.append(f"last run: verdict={blob.get('verdict')} ok={blob.get('ok')}")
+    elif stg == "synthesize":
+        if blob:
+            lines.append(f"last run: ok={blob.get('ok')} bullets/context present={bool(blob)}")
+    elif stg == "metrics":
+        if blob:
+            lines.append(f"last run: ok={blob.get('ok')}")
+    # Always surface last_dag detail string if present
+    det = (state.stage_detail.get(stg) or "").strip()
+    if det:
+        lines.append(f"detail: {det}")
+    return lines
+
+
+def stage_hover_lines(state: "AppState", stg: str) -> list[str]:
+    """Full stage encyclopedia for hover/pin flyout."""
+    exp = STAGE_EXPLAIN.get(stg) or {}
+    st = state.stage_status.get(stg, "pending")
+    col_name = {
+        "ok": "GREEN / GO",
+        "running": "YELLOW / RUNNING",
+        "fail": "RED / STOP",
+        "pending": "GRAY / IDLE",
+        "skip": "GRAY / SKIP (intentional)",
+    }.get(st, st)
+    lines = [
+        f"What: {exp.get('what') or STAGE_LABEL.get(stg, stg)}",
+        f"Why:  {exp.get('why') or '—'}",
+        f"When: {exp.get('when') or '—'}",
+        f"Status now: {col_name}",
+    ]
+    lines.extend(_stage_config_lines(state, stg))
+    lines.append("Click stage to pin this card")
+    return lines
 
 
 def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
@@ -1481,7 +1691,7 @@ def main() -> int:
         pipe = pygame.Rect(right_x, y, RIGHT_W, min(pipe_h, max_pipe))
         rounded_panel(screen, pipe, PANEL, BORDER if state.focus != 1 else ACCENT, 10)
         draw_text(screen, font_sm, "CONCERT STAGES", pipe.x + 12, pipe.y + 8, TEXT_DIM)
-        draw_text(screen, font_xs, "hover = what this stage does", pipe.x + 12, pipe.y + 24, TEXT_MUTED)
+        draw_text(screen, font_xs, "hover = what / why / when / config", pipe.x + 12, pipe.y + 24, TEXT_MUTED)
         py = pipe.y + 40
         pulse = 0.55 + 0.45 * math.sin(state.tick * 0.12)
         for stg in STAGE_ORDER:
@@ -1600,24 +1810,19 @@ def main() -> int:
                 title=(n.get("title") or n.get("id") or "")[:60],
             )
         elif state.hover_stage or state.pinned_stage:
-            stg = state.hover_stage or state.pinned_stage
-            st = state.stage_status.get(stg or "", "pending")
-            col_name = {"ok": "GREEN / GO", "running": "YELLOW / RUNNING", "fail": "RED / STOP", "pending": "GRAY / IDLE", "skip": "GRAY / SKIP"}.get(st, st)
+            stg = state.hover_stage or state.pinned_stage or ""
             flyout(
                 screen,
                 font_sm,
                 font_xs,
-                [
-                    STAGE_LABEL.get(stg or "", ""),
-                    f"status light: {col_name}",
-                    f"last detail: {state.stage_detail.get(stg or '', '—') or '—'}",
-                    "Click stage to pin this flyout",
-                ],
+                stage_hover_lines(state, stg),
                 mx,
                 my,
                 W,
                 H,
-                title=f"Stage: {stg}",
+                title=f"Stage: {stg} — {STAGE_LABEL.get(stg, '')}",
+                max_line=88,
+                max_width=460,
             )
         # Hover status strip → full explanation (flyout stays on-screen)
         if status_strip.collidepoint(mx, my):

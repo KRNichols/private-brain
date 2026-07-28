@@ -36,7 +36,8 @@ export PYGAME_HIDE_SUPPORT_PROMPT="${PYGAME_HIDE_SUPPORT_PROMPT:-1}"
 export PB_ENTERPRISE="${PB_ENTERPRISE:-1}"
 export PB_GODSEYE="${PB_GODSEYE:-1}"
 # max agents: 0/empty/auto → organism computes min(256, cpu*8)
-export PB_SWARM_AGENTS="${PB_SWARM_AGENTS:-auto}"
+# Product default: 16 shared-topology swarm agents (set 0 to disable)
+export PB_SWARM_AGENTS="${PB_SWARM_AGENTS:-16}"
 export PB_MAX_AGENTS="${PB_MAX_AGENTS:-auto}"
 export PB_AWS_REGION="${PB_AWS_REGION:-gov-region-1}"
 PROFILE="beast-enterprise"
