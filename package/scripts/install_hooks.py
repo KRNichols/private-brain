@@ -67,13 +67,21 @@ def _cmd_unix_wrapper(brain: Path, py_script: str, py: Path) -> str:
 
 
 def _cmd_windows_wrapper(brain: Path, cmd_name: str) -> str:
-    """Windows: always invoke permanent .cmd wrapper (no multiline python)."""
-    # Absolute path when known; also allow env expansion for portable installs.
+    """Windows: always invoke permanent .cmd wrapper (no multiline python).
+
+    Never embed host absolute paths (esp. Mac /Users/...) into commandWindows —
+    Windows runners expand PRIVATE_BRAIN_HOME / CODEX_HOME / USERPROFILE at runtime.
+    Absolute Windows paths are OK only when installing *on* Windows with a real drive letter.
+    """
     wrapper = brain / "hooks" / cmd_name
-    if wrapper.exists():
-        # Quote absolute path — Codex launches via CreateProcess / cmd
-        return f'cmd /c ""{wrapper}""'
-    # Fallback portable
+    # On Windows only: absolute path to existing wrapper (reliable CreateProcess)
+    if sys.platform.startswith("win") and wrapper.exists():
+        w = str(wrapper)
+        if "/Users/" in w.replace("\\", "/"):
+            pass  # fall through to portable
+        else:
+            return f'cmd /c ""{wrapper}""'
+    # Portable env expansion (required for cross-OS install + READY zip)
     return (
         'cmd /c "if defined PRIVATE_BRAIN_HOME '
         f'("%PRIVATE_BRAIN_HOME%\\hooks\\{cmd_name}") '
