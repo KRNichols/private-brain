@@ -1979,7 +1979,16 @@ def main() -> int:
         pipe = pygame.Rect(right_x, y, RIGHT_W, min(pipe_h, max_pipe))
         rounded_panel(screen, pipe, PANEL, BORDER if state.focus != 1 else ACCENT, 10)
         draw_text(screen, font_sm, "CONCERT STAGES", pipe.x + 12, pipe.y + 8, TEXT_DIM)
-        draw_text(screen, font_xs, "hover = what / why / when / config", pipe.x + 12, pipe.y + 24, TEXT_MUTED)
+        # Show last concert age so stale skip (old last_dag) is obvious
+        dag_ts = ""
+        if isinstance(state._last_dag_data, dict):
+            dag_ts = str(state._last_dag_data.get("ts") or "")[:19]
+        sub = "hover = what / why / when / config"
+        if dag_ts:
+            sub = f"last concert {dag_ts} · hover for config"
+        if state.job_busy:
+            sub = f"JOB {state.job_id} running… · {sub}"
+        draw_text(screen, font_xs, sub[:48], pipe.x + 12, pipe.y + 24, TEXT_MUTED)
         py = pipe.y + 40
         pulse = 0.55 + 0.45 * math.sin(state.tick * 0.12)
         for stg in STAGE_ORDER:
