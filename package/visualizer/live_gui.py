@@ -405,8 +405,8 @@ UI_HELP: dict[str, dict[str, object]] = {
     "kpi_disk": {
         "title": "On disk — core graph size",
         "lines": [
-            "Bytes used by nodes/ + edges/ + graph/ (snapshot kit).",
-            "Hover the yellow chip on the Knowledge Graph panel for full breakdown.",
+            "Top-bar count only: bytes for nodes/ + edges/ + graph/ (snapshot kit).",
+            "Hover this KPI for the full folder breakdown.",
             "Whole .brain folder is larger (includes content, index, audit, logs).",
         ],
     },
@@ -418,14 +418,7 @@ UI_HELP: dict[str, dict[str, object]] = {
             "Hover a dot for title/id. Click a dot for origin trail (how it was born).",
             "Drag to pan. Mouse wheel to zoom. R reshuffles islands. Space pauses motion.",
             "All dots and labels stay clipped inside this panel.",
-        ],
-    },
-    "disk_chip": {
-        "title": "Graph size on disk",
-        "lines": [
-            "Big number = core graph store size (nodes + edges + snapshot).",
-            "Mini bar colors: blue=nodes, cyan=edges, green=snapshot kit.",
-            "Hover for full .brain breakdown (index, content, total).",
+            "Disk size lives in the top-bar On disk KPI (not on this panel).",
         ],
     },
     "pipeline": {
@@ -2262,7 +2255,7 @@ def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
     draw_text(
         screen,
         font_xs,
-        "Tip: press T to turn hover flyouts off for a quiet UI · Config has the same toggle",
+        "Tip: T = flyouts on/off · top-bar On disk = graph size (hover for breakdown)",
         box.x + pad,
         foot,
         TEXT_MUTED,
@@ -2709,51 +2702,8 @@ def main() -> int:
         draw_text(screen, font_sm, "KNOWLEDGE GRAPH", graph_rect.x + 14, graph_rect.y + 10, TEXT_DIM)
         ui_hover_zones.append((graph_rect, "graph"))
 
-        # ── On-disk size chip (right of title) — nice compact universe meter ──
-        dstat = state.disk_stats or {}
-        g_bytes = int(dstat.get("graph_total_b") or 0)
-        brain_bytes = int(dstat.get("brain_b") or 0)
-        size_main = format_bytes(g_bytes) if g_bytes else "…"
-        # Chip width from text
-        chip_pad_x = 12
-        size_w = font_kpi.size(size_main)[0]
-        sub_txt = "on disk"
-        sub_w = font_xs.size(sub_txt)[0]
-        chip_w = max(96, max(size_w, sub_w) + chip_pad_x * 2 + 18)
-        chip_h = 40
-        disk_chip = pygame.Rect(graph_rect.right - chip_w - 12, graph_rect.y + 8, chip_w, chip_h)
-        chip_hover = disk_chip.collidepoint(mx, my)
-        chip_fill = PANEL_2 if not chip_hover else (34, 38, 50)
-        chip_border = ACCENT if chip_hover else BORDER
-        rounded_panel(screen, disk_chip, chip_fill, chip_border, 8)
-        # soft accent bar on left of chip
-        bar = pygame.Rect(disk_chip.x + 4, disk_chip.y + 6, 3, disk_chip.h - 12)
-        pygame.draw.rect(screen, YELLOW if g_bytes else GRAY, bar, border_radius=2)
-        # sparkline-ish mini proportion of nodes vs edges vs graph kit
-        nb = max(0, int(dstat.get("nodes_b") or 0))
-        eb = max(0, int(dstat.get("edges_b") or 0))
-        gb = max(0, int(dstat.get("graph_b") or 0))
-        parts = [("N", nb, ACCENT), ("E", eb, CYAN), ("S", gb, GREEN)]
-        sum_p = max(1, nb + eb + gb)
-        bx = disk_chip.x + 12
-        by = disk_chip.bottom - 7
-        bw = disk_chip.w - 20
-        for _lab, pb, pcol in parts:
-            seg = max(2, int(bw * (pb / sum_p))) if g_bytes else 0
-            if seg > 0:
-                pygame.draw.rect(screen, pcol, (bx, by, max(1, seg - 1), 3), border_radius=1)
-                bx += seg
-        draw_text(
-            screen,
-            font_kpi,
-            size_main,
-            disk_chip.x + 12,
-            disk_chip.y + 4,
-            TEXT if g_bytes else TEXT_MUTED,
-        )
-        draw_text(screen, font_xs, sub_txt, disk_chip.x + 12, disk_chip.y + 24, TEXT_MUTED)
-
         # Capacity subtitle: how many we hold / draw vs full snapshot
+        # (disk size is top-bar "On disk" KPI only — not duplicated on this panel)
         shown_n = min(len(state.nodes), DRAW_NODES)
         total_n = state.snapshot_node_total or len(state.nodes)
         held_n = len(state.nodes)
@@ -2764,11 +2714,10 @@ def main() -> int:
             motion = "PAUSED" if state.layout_frozen else "LIVE (always moving)"
             cap_txt = f"{held_n} nodes · {motion} · hover anything for plain-English help · R reshuffle · Space pause"
             cap_col = TEXT_MUTED
-        # Leave room for the disk chip on the right
         draw_text(
             screen,
             font_xs,
-            ellipsize(font_xs, cap_txt, max(80, graph_rect.w - chip_w - 40)),
+            ellipsize(font_xs, cap_txt, max(80, graph_rect.w - 28)),
             graph_rect.x + 14,
             graph_rect.y + 28,
             cap_col,
@@ -3136,20 +3085,6 @@ def main() -> int:
                     max_width=480,
                     max_height=min(H - 40, int(H * 0.72)),
                 )
-            elif disk_chip.collidepoint(mx, my):
-                brain_lab = format_bytes(int((state.disk_stats or {}).get("brain_b") or 0))
-                flyout(
-                    screen,
-                    font_sm,
-                    font_xs,
-                    state.disk_hover_lines(),
-                    mx,
-                    my,
-                    W,
-                    H,
-                    title=f"Graph on disk · {format_bytes(g_bytes)} core · {brain_lab} whole .brain",
-                    max_width=480,
-                )
             else:
                 # Specific UI zones first (skip giant graph rect), then graph empty space
                 hit_key = None
@@ -3162,27 +3097,46 @@ def main() -> int:
                 if hit_key is None and graph_rect.collidepoint(mx, my):
                     hit_key = "graph"
                 if hit_key:
-                    title, lines = ui_help_lines(hit_key)
-                    # Enrich health with live counts
-                    if hit_key == "health":
-                        lines = [
-                            health_why,
-                            f"Counts now: ok={counts['ok']} running={counts['running']} "
-                            f"fail={counts['fail']} pending={counts['pending']}",
-                            *lines,
-                        ]
-                    flyout(
-                        screen,
-                        font_sm,
-                        font_xs,
-                        lines,
-                        mx,
-                        my,
-                        W,
-                        H,
-                        title=title,
-                        max_width=460,
-                    )
+                    # Top-bar On disk KPI gets the full size breakdown
+                    if hit_key == "kpi_disk":
+                        g_bytes = int((state.disk_stats or {}).get("graph_total_b") or 0)
+                        brain_lab = format_bytes(
+                            int((state.disk_stats or {}).get("brain_b") or 0)
+                        )
+                        flyout(
+                            screen,
+                            font_sm,
+                            font_xs,
+                            state.disk_hover_lines(),
+                            mx,
+                            my,
+                            W,
+                            H,
+                            title=f"On disk · {format_bytes(g_bytes)} core · {brain_lab} whole .brain",
+                            max_width=480,
+                        )
+                    else:
+                        title, lines = ui_help_lines(hit_key)
+                        # Enrich health with live counts
+                        if hit_key == "health":
+                            lines = [
+                                health_why,
+                                f"Counts now: ok={counts['ok']} running={counts['running']} "
+                                f"fail={counts['fail']} pending={counts['pending']}",
+                                *lines,
+                            ]
+                        flyout(
+                            screen,
+                            font_sm,
+                            font_xs,
+                            lines,
+                            mx,
+                            my,
+                            W,
+                            H,
+                            title=title,
+                            max_width=460,
+                        )
 
         if state.show_help:
             help_overlay(screen, font_title, font_sm, font_xs, W, H)
