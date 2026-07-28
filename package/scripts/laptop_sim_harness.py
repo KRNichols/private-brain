@@ -205,7 +205,19 @@ def phase_install(env: dict[str, str], codex: Path, brain: Path) -> None:
             and "pb-stop-validate.cmd" in raw,
             "commandWindows must use permanent wrappers",
         )
-        gate("sim_hooks_no_multiline_win", "\n" not in raw.split("commandWindows")[-1][:200] if "commandWindows" in raw else True)
+        # Parse JSON — do NOT scan pretty-printed tails (they always contain newlines)
+        multiline_ok = True
+        try:
+            hdata = json.loads(raw)
+            for event, blocks in (hdata.get("hooks") or {}).items():
+                for block in blocks or []:
+                    for h in block.get("hooks") or []:
+                        cw = str(h.get("commandWindows") or "")
+                        if "\n" in cw or "\r" in cw:
+                            multiline_ok = False
+        except Exception:
+            multiline_ok = "commandWindows" in raw  # fall back: presence only
+        gate("sim_hooks_no_multiline_win", multiline_ok, "commandWindows values must be single-line")
     for w in ("pb-session-start.cmd", "pb-user-prompt-submit.cmd", "pb-stop-validate.cmd"):
         gate(f"sim_wrapper_{w}", (brain / "hooks" / w).is_file())
 
