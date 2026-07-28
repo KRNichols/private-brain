@@ -25,7 +25,7 @@ if not defined PRIVATE_BRAIN_HOME set "PRIVATE_BRAIN_HOME=%CODEX_HOME%\private-b
 REM Default headless; -GodsEye turns GUI on. Do NOT pre-define PB_GODSEYE=0 then
 REM try "if not defined" (dead code). Max agents MVP law = 64.
 if not defined PB_GODSEYE set "PB_GODSEYE=0"
-if not defined PB_SWARM_AGENTS set "PB_SWARM_AGENTS=64"
+if not defined PB_SWARM_AGENTS set "PB_SWARM_AGENTS=16"
 REM Always-on organism defaults (Windows Corporate)
 if not defined PB_ENTERPRISE set "PB_ENTERPRISE=1"
 if not defined PB_MAX_AGENTS set "PB_MAX_AGENTS=64"
