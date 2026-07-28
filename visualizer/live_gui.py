@@ -29,7 +29,9 @@ import math
 import os
 import random
 import re
+import subprocess
 import sys
+import threading
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -255,14 +257,64 @@ HELP_LINES = [
     "  Hover a stage for full description + last detail",
     "  Click a stage to pin its flyout",
     "",
-    "KEYS  H help · 1 graph · 2 pipeline · 3 metrics",
+    "KEYS  H help · J jobs menu · 1 graph · 2 pipeline · 3 metrics",
     "      Space pause/resume live layout · R reshuffle · S reload · Q quit",
     "      drag pan · wheel zoom · × Close · layout is LIVE by default",
+    "",
+    "JOBS MENU (press J)",
+    "  1 Rerun concert · 2 Boot only · 3 Doctor · 4 Reindex vectors",
+    "  5 Reload snapshot · 6 Force optimize concert · Esc closes menu",
     "",
     "ORIGIN CRAWL (click a node)",
     "  Builds a trail: parent_id chain + graph edges (HAS_*, CONTAINS, …)",
     "  [ ] keys walk root ← → leaf. Enter loads on-disk content snippet.",
     "  Trail neighbors highlight on the graph so you can see lineage.",
+]
+
+# Operator jobs launched from GodsEye (background; UI stays live)
+JOB_MENU: list[dict[str, Any]] = [
+    {
+        "id": "concert",
+        "key": "1",
+        "label": "Rerun concert",
+        "desc": "Full DAG: boot→swarm→retrieve→…→emit (allow crawl)",
+    },
+    {
+        "id": "concert_nocrawl",
+        "key": "2",
+        "label": "Concert (no crawl)",
+        "desc": "Full concert with --no-crawl (local graph only)",
+    },
+    {
+        "id": "boot",
+        "key": "3",
+        "label": "Boot only",
+        "desc": "dag boot: tree + snapshot, no full concert",
+    },
+    {
+        "id": "doctor",
+        "key": "4",
+        "label": "Enterprise doctor",
+        "desc": "enterprise.py doctor — health / vectors / audit",
+    },
+    {
+        "id": "reindex",
+        "key": "5",
+        "label": "Reindex vectors",
+        "desc": "vector_manager reindex_all (local embeddings)",
+    },
+    {
+        "id": "reload_snap",
+        "key": "6",
+        "label": "Reload snapshot",
+        "desc": "Force Live Ops to re-read graph snapshot now",
+    },
+    {
+        "id": "optimize",
+        "key": "7",
+        "label": "Force optimize concert",
+        "desc": "Concert with PB_ALWAYS_OPTIMIZE=1",
+    },
 ]
 
 
@@ -300,10 +352,17 @@ class LiveState:
         self.focus = 0
         self.tick = 0
         self.show_help = False
+        self.show_jobs = False
+        self.job_busy = False
+        self.job_id: str | None = None
+        self.job_status: str = "idle"  # idle | running | ok | fail
+        self.job_message: str = ""
+        self.job_started_at: float = 0.0
         self.activity_scroll = 0
         self.pinned_stage: str | None = None
         self.hover_node: str | None = None
         self.hover_stage: str | None = None
+        self.hover_job: str | None = None
         # Snapshot capacity bookkeeping (full vs held for viz)
         self.snapshot_node_total = 0
         self.snapshot_edge_total = 0
@@ -1186,6 +1245,194 @@ def stage_hover_lines(state: "AppState", stg: str) -> list[str]:
     return lines
 
 
+def _scripts_py() -> tuple[Path, str]:
+    """PRIVATE_BRAIN_HOME scripts dir + python executable."""
+    home = brain_home()
+    scripts = home / "scripts"
+    if sys.platform.startswith("win"):
+        cands = [
+            home / "venv" / "Scripts" / "python.exe",
+            home / "venv" / "Scripts" / "python",
+        ]
+    else:
+        cands = [
+            home / "venv" / "bin" / "python3",
+            home / "venv" / "bin" / "python",
+        ]
+    py = next((str(c) for c in cands if c.exists()), sys.executable)
+    return scripts, py
+
+
+def run_job_async(state: "LiveState", job_id: str) -> None:
+    """Launch an operator job in a background thread (non-blocking UI)."""
+    if state.job_busy:
+        state.event_log.appendleft("job  busy — wait for current job")
+        return
+
+    # Local UI-only job
+    if job_id == "reload_snap":
+        state.snap_mtime = state.dag_mtime = 0
+        state.events_offset = 0
+        state.job_status = "ok"
+        state.job_id = job_id
+        state.job_message = "snapshot reload forced"
+        state.event_log.appendleft("job  reload snapshot")
+        return
+
+    scripts, py = _scripts_py()
+    orch = scripts / "orchestrate.py"
+    ent = scripts / "enterprise.py"
+    env = {
+        **os.environ,
+        "PRIVATE_BRAIN_HOME": str(brain_home()),
+        "PYTHONPATH": str(scripts) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+        "PB_ENTERPRISE": os.environ.get("PB_ENTERPRISE") or "1",
+        "PB_SWARM_AGENTS": os.environ.get("PB_SWARM_AGENTS") or "16",
+        "PB_GODSEYE": "1",
+        "PB_GODSEYE_BACKEND": "cpu",
+    }
+
+    if job_id == "concert":
+        argv = [py, str(orch), "concert", "--prompt", "GodsEye menu: rerun concert — status of graph, cite nodes", "--json"]
+    elif job_id == "concert_nocrawl":
+        argv = [
+            py,
+            str(orch),
+            "concert",
+            "--prompt",
+            "GodsEye menu: concert no-crawl — status of graph, cite nodes",
+            "--no-crawl",
+            "--json",
+        ]
+    elif job_id == "boot":
+        argv = [py, str(orch), "boot"]
+    elif job_id == "doctor":
+        argv = [py, str(ent), "doctor"]
+    elif job_id == "reindex":
+        argv = [
+            py,
+            "-c",
+            "from vector_manager import reindex_all; r=reindex_all(include_structural=True); print(r)",
+        ]
+    elif job_id == "optimize":
+        env["PB_ALWAYS_OPTIMIZE"] = "1"
+        argv = [
+            py,
+            str(orch),
+            "concert",
+            "--prompt",
+            "GodsEye menu: force optimize concert",
+            "--json",
+        ]
+    else:
+        state.event_log.appendleft(f"job  unknown:{job_id}")
+        return
+
+    if not orch.is_file() and job_id in ("concert", "concert_nocrawl", "boot", "optimize"):
+        state.job_status = "fail"
+        state.job_message = "orchestrate.py missing"
+        state.event_log.appendleft("job  fail orchestrate missing")
+        return
+
+    state.job_busy = True
+    state.job_id = job_id
+    state.job_status = "running"
+    state.job_started_at = time.time()
+    state.job_message = f"running {job_id}…"
+    state.event_log.appendleft(f"job  start {job_id}")
+    # Mark stages pending so operator sees concert activity soon
+    if job_id in ("concert", "concert_nocrawl", "optimize"):
+        for s in STAGE_ORDER:
+            state.stage_status[s] = "pending"
+        state.stage_status["boot"] = "running"
+
+    def _worker() -> None:
+        try:
+            r = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=900,
+                env=env,
+                cwd=str(brain_home()),
+            )
+            ok = r.returncode == 0
+            tail = ((r.stdout or "") + "\n" + (r.stderr or "")).strip().replace("\n", " ")
+            state.job_busy = False
+            state.job_status = "ok" if ok else "fail"
+            state.job_message = (tail[:160] if tail else ("ok" if ok else f"rc={r.returncode}"))
+            state.event_log.appendleft(
+                f"job  {'ok' if ok else 'fail'} {job_id}  {state.job_message[:60]}"
+            )
+            # Force UI refresh of dag/snapshot
+            state.snap_mtime = state.dag_mtime = 0
+            state.events_offset = 0
+        except Exception as e:
+            state.job_busy = False
+            state.job_status = "fail"
+            state.job_message = str(e)[:160]
+            state.event_log.appendleft(f"job  fail {job_id}: {e}")
+
+    threading.Thread(target=_worker, name=f"pb-job-{job_id}", daemon=True).start()
+
+
+def jobs_overlay(
+    screen,
+    font,
+    font_sm,
+    font_xs,
+    state: "LiveState",
+    W: int,
+    H: int,
+    job_hitboxes: list,
+) -> None:
+    """Centered jobs menu — click a row or press the number key."""
+    job_hitboxes.clear()
+    pad = 14
+    row_h = 36
+    title_h = 36
+    status_h = 28
+    box_w = min(520, W - 40)
+    box_h = title_h + status_h + pad + len(JOB_MENU) * row_h + pad + 24
+    box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
+    # dim backdrop
+    veil = pygame.Surface((W, H), pygame.SRCALPHA)
+    veil.fill((0, 0, 0, 140))
+    screen.blit(veil, (0, 0))
+    rounded_panel(screen, box, PANEL, ACCENT, 12)
+    draw_text(screen, font, "JOBS — run from GodsEye", box.x + pad, box.y + 10, TEXT)
+    draw_text(screen, font_xs, "J / Esc close · click row or press number", box.x + pad, box.y + 32, TEXT_MUTED)
+
+    # status line
+    busy = state.job_busy
+    st_col = YELLOW if busy else (GREEN if state.job_status == "ok" else (RED if state.job_status == "fail" else TEXT_MUTED))
+    st_line = f"status: {state.job_status}"
+    if state.job_id:
+        st_line += f" · last={state.job_id}"
+    if state.job_message:
+        st_line += f" · {state.job_message[:55]}"
+    if busy and state.job_started_at:
+        st_line += f" · {int(time.time() - state.job_started_at)}s"
+    draw_text(screen, font_xs, st_line[:90], box.x + pad, box.y + title_h + 8, st_col)
+
+    y = box.y + title_h + status_h + 8
+    for job in JOB_MENU:
+        row = pygame.Rect(box.x + 10, y, box.w - 20, row_h - 4)
+        hover = state.hover_job == job["id"]
+        if hover:
+            pygame.draw.rect(screen, PANEL_2, row, border_radius=6)
+        pygame.draw.rect(screen, BORDER if not hover else ACCENT, row, 1, border_radius=6)
+        key_lab = str(job.get("key") or "")
+        draw_text(screen, font_sm, f"[{key_lab}]  {job['label']}", row.x + 10, row.y + 4, TEXT)
+        draw_text(screen, font_xs, str(job.get("desc") or "")[:70], row.x + 10, row.y + 18, TEXT_MUTED)
+        job_hitboxes.append((row, job["id"]))
+        y += row_h
+    if busy:
+        draw_text(screen, font_xs, "Job running in background — UI stays live…", box.x + pad, box.bottom - 22, YELLOW)
+    else:
+        draw_text(screen, font_xs, "Tip: Rerun concert = full swarm+retrieve DAG", box.x + pad, box.bottom - 22, TEXT_MUTED)
+
+
 def help_overlay(screen, font, font_sm, font_xs, W: int, H: int) -> None:
     overlay = pygame.Surface((W, H), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 180))
@@ -1256,11 +1503,14 @@ def main() -> int:
         return TOP, BOT, RIGHT, graph, right_x
 
     close_btn = pygame.Rect(0, 0, 72, 28)  # updated each frame
+    jobs_btn = pygame.Rect(0, 0, 72, 28)
+    job_hitboxes: list[tuple[pygame.Rect, str]] = []
     running = True
     while running:
         TOP, BOT, RIGHT, graph_rect, right_x = layout_rects()
-        # Close button — top-right, always visible, always clickable
+        # Close + Jobs buttons — top-right
         close_btn = pygame.Rect(W - 84, 10, 72, 28)
+        jobs_btn = pygame.Rect(W - 168, 10, 72, 28)
         now = time.time()
         if now - last_poll > 0.4:
             try:
@@ -1288,12 +1538,26 @@ def main() -> int:
                 if event.key == pygame.K_w and (mods & (pygame.KMOD_META | pygame.KMOD_CTRL)) or event.key == pygame.K_q:
                     running = False
                 elif event.key == pygame.K_ESCAPE:
-                    if state.show_help:
+                    if state.show_jobs:
+                        state.show_jobs = False
+                    elif state.show_help:
                         state.show_help = False
                     else:
                         running = False
                 elif event.key == pygame.K_h:
                     state.show_help = not state.show_help
+                    if state.show_help:
+                        state.show_jobs = False
+                elif event.key == pygame.K_j:
+                    state.show_jobs = not state.show_jobs
+                    if state.show_jobs:
+                        state.show_help = False
+                elif state.show_jobs and event.unicode in "1234567":
+                    # Number keys map to JOB_MENU while menu open
+                    for job in JOB_MENU:
+                        if job.get("key") == event.unicode:
+                            run_job_async(state, str(job["id"]))
+                            break
                 elif event.key == pygame.K_r:
                     state.request_relayout()
                 elif event.key == pygame.K_SPACE:
@@ -1306,11 +1570,11 @@ def main() -> int:
                     state.vel.clear()
                     state.layout_frozen = False
                     state._settle_then_freeze = False
-                elif event.key == pygame.K_1:
+                elif not state.show_jobs and event.key == pygame.K_1:
                     state.focus = 0
-                elif event.key == pygame.K_2:
+                elif not state.show_jobs and event.key == pygame.K_2:
                     state.focus = 1
-                elif event.key == pygame.K_3:
+                elif not state.show_jobs and event.key == pygame.K_3:
                     state.focus = 2
                 # Origin trail: [ toward root · ] toward leaf · Enter refresh snippet · Esc clears help first
                 elif event.key in (pygame.K_LEFTBRACKET, pygame.K_LEFT):
@@ -1328,6 +1592,22 @@ def main() -> int:
                     # × Close button (always works)
                     if close_btn.collidepoint(event.pos):
                         running = False
+                        break
+                    # Jobs button
+                    if jobs_btn.collidepoint(event.pos):
+                        state.show_jobs = not state.show_jobs
+                        if state.show_jobs:
+                            state.show_help = False
+                        break
+                    # Jobs menu row click
+                    if state.show_jobs:
+                        hit_job = None
+                        for rect, jid in job_hitboxes:
+                            if rect.collidepoint(event.pos):
+                                hit_job = jid
+                                break
+                        if hit_job:
+                            run_job_async(state, hit_job)
                         break
                     # stage pin
                     pinned = None
@@ -1455,7 +1735,7 @@ def main() -> int:
                 pygame.draw.circle(screen, col, (lx + 5, 24), 5)
                 draw_text(screen, font_xs, lab, lx + 14, 17, TEXT_MUTED)
                 lx += 48
-            draw_text(screen, font_xs, "H help · R re-layout · Space pause/live", lx + 4, 40, TEXT_MUTED)
+            draw_text(screen, font_xs, "H help · J jobs · R re-layout · Space pause", lx + 4, 40, TEXT_MUTED)
 
         # Status strip (right, clipped)
         running_stages = state.running_stages()
@@ -1485,6 +1765,14 @@ def main() -> int:
             pcol,
         )
         screen.set_clip(prev)
+
+        # Jobs button (left of Close)
+        jobs_fill = ACCENT if (jobs_btn.collidepoint(mx, my) or state.show_jobs) else PANEL_2
+        pygame.draw.rect(screen, jobs_fill, jobs_btn, border_radius=6)
+        pygame.draw.rect(screen, ACCENT if state.job_busy else BORDER, jobs_btn, 1, border_radius=6)
+        jlab = "… Jobs" if state.job_busy else "Jobs"
+        jx = jobs_btn.centerx - font_sm.size(jlab)[0] // 2
+        draw_text(screen, font_sm, jlab, jx, jobs_btn.y + 6, TEXT)
 
         # × Close
         close_fill = RED if close_btn.collidepoint(mx, my) else PANEL_2
@@ -1844,6 +2132,31 @@ def main() -> int:
 
         if state.show_help:
             help_overlay(screen, font_title, font_sm, font_xs, W, H)
+        if state.show_jobs:
+            # hover job rows for highlight
+            state.hover_job = None
+            # jobs_overlay fills job_hitboxes; compute hover after draw needs two-pass —
+            # draw first, then set hover from mouse for next frame is OK; set before draw:
+            # we call overlay which rebuilds hitboxes, then re-check hover
+            jobs_overlay(screen, font_title, font_sm, font_xs, state, W, H, job_hitboxes)
+            for rect, jid in job_hitboxes:
+                if rect.collidepoint(mx, my):
+                    state.hover_job = jid
+                    break
+
+        # Job running banner (even when menu closed)
+        if state.job_busy:
+            ban = pygame.Rect(12, H - BOT - 28, min(W - 24, 520), 22)
+            pygame.draw.rect(screen, PANEL_2, ban, border_radius=6)
+            pygame.draw.rect(screen, YELLOW, ban, 1, border_radius=6)
+            draw_text(
+                screen,
+                font_xs,
+                f"JOB running: {state.job_id}  ({int(time.time() - state.job_started_at)}s)  — press J for menu",
+                ban.x + 8,
+                ban.y + 4,
+                YELLOW,
+            )
 
         pygame.display.flip()
         clock.tick(30)
