@@ -11,6 +11,8 @@ Mac ≡ Windows. Real results only (cite-or-block). Not agent theater.
 
 **Full one-pager:** [`DOWNLOAD.md`](./DOWNLOAD.md) · **Picture:** [`DIAGRAM.md`](./DIAGRAM.md) · **Teach GPT 5.6 / Codex the release:** [`ChatGPT56info.md`](./ChatGPT56info.md)
 
+**Laptop closeout / test pack (browser GPT 5.6 + Codex 5.1):** see [§ Ready to test — developer issues closeout](#ready-to-test--developer-issues-closeout) below.
+
 ---
 
 ## Windows (copy/paste)
@@ -478,4 +480,302 @@ CI runs `scripts/judge_package_coverage.py` on the runner:
 
 Fails if critical modules stay at **0%** or mean coverage &lt; `PB_COVERAGE_MIN` (default 15, ratchet up).  
 Report: `.brain/state/PACKAGE_COVERAGE_JUDGE.json`
+
+---
+
+## Ready to test — developer issues closeout
+
+This section is the **test plan + orchestration brief** after the developer-issues handoff work.  
+**Pin:** Windows Release MVP green on `windows-ready-364093e` (or newer `windows-ready-*` on [Releases](https://github.com/KRNichols/private-brain/releases)).
+
+### 10× readiness audit (what “ready to test” means)
+
+**Shipped and CI-proven (do not re-litigate in chat):**
+
+| Area | Proof |
+|------|--------|
+| Permanent Windows `.cmd` hook wrappers | `install_hooks.py` → `pb-session-start.cmd` / `pb-user-prompt-submit.cmd` / `pb-stop-validate.cmd` |
+| SessionStart / UPS under timeout | Fast path + deferred work; MVP gates `session_start_under_budget`, `ups_under_budget` |
+| Stop: ops acks + current evidence | Beast/normal acks continue; uncited source claims block; cited Confluence continues |
+| `config.toml` managed keys before tables | `merge_codex_config._prepend_managed_before_first_table` |
+| GodsEye machine-readable status | `godseye.py status --json` (enabled, dismissed, pids, alive, backend, capability, last_error, last_started_at) |
+| local-rag product surface | `%USERPROFILE%\.codex\local-rag\` via `install_local_rag.py` + `product_readiness.py` |
+| Canonical diagnostic | `e2e_status_report.py` (read-only; doctor for vectors — no path guesses) |
+| Neo4J path recon honesty | `neoj_path_reconcile.py` — no `preserved_verified` without `approved_relative_path` |
+| Short pages always chunk | `brain_lib.write_node` + `confluence_page_rechunk.py` |
+| `programs.yaml` contract | `config/programs.yaml` present |
+| Nuclear / zero-fail on Windows CI | Windows Release MVP **success** + READY zip mint |
+
+**Still laptop / AppGate only (test will discover; code cannot invent):**
+
+| Residual | Honest expectation |
+|----------|-------------------|
+| Live `confluence:page:633240886` chunks | Needs local content or AppGate ingest; rechunk tool fixes empty `chunk_ids` when body exists |
+| GodsEye GUI process | `enabled=true` + `alive_count=0` is valid until explicit `godseye.py start` |
+| Full program metadata on every node | Schema file exists; not every historical node is backfilled |
+| Corporate hosts/tokens | Heal/ask once — never invent |
+
+**Ready to test on the golden Windows laptop when:** latest READY zip (or main ≥ `364093e`) is installed, Codex **0.144.x** is present, and you can run PowerShell + paste outputs into a **browser** GPT 5.6 thread (5.6 does **not** run inside Codex CLI).
+
+---
+
+### Roles (do not confuse)
+
+| Who | Where | Does | Does **not** |
+|-----|--------|------|----------------|
+| **GPT 5.6 software manager** | **Web browser chat only** | Plan, score pastes, sequence next step, write Codex prompts | Run PowerShell, open files, call Codex |
+| **Human** | Laptop | Run PowerShell / open Codex / paste results into the browser thread | — |
+| **Codex + GPT 5.1** | Codex CLI on laptop | Install repair, execute tools, local code under `PRIVATE_BRAIN_HOME` | Declare green without evidence |
+
+**Law:** zero soft-pass. No invented hosts, tokens, or graph state. Prefer read-only evidence first.
+
+---
+
+### GPT 5.6 (browser) — operating pattern
+
+Every 5.6 reply should look like:
+
+```text
+STATUS: gathering | installing | testing | blocked | ready for architect
+HAVE: <evidence already pasted>
+NEED: <one next artifact>
+ACTION FOR KEVIN:
+  [PowerShell] <one block>   OR   [Codex] <one prompt to paste into Codex CLI>
+COPY BACK: <exactly what to paste into this browser chat>
+```
+
+Rules for 5.6:
+
+- One primary action per turn.
+- Never claim a command ran unless the human pasted output.
+- Prefer PowerShell evidence first; Codex only after path baseline exists.
+- Quote failing lines; map to the score table below.
+- Do not start GodsEye from hooks; do not delete audit/state to “heal.”
+
+**Optional custom instruction (paste into ChatGPT / 5.6 settings):**
+
+> I am a browser-only software manager for Private Brain. I do not execute code. I give Kevin one PowerShell block or one Codex CLI prompt at a time, score pasted outputs against hard gates (hooks `.cmd` wrappers, SessionStart/UPS budget, Stop ops+cites, local-rag readiness, GodsEye JSON, neo recon, e2e_status, donut chunks), ban soft-pass, and produce a compact evidence handoff. I never invent laptop state.
+
+---
+
+### Phase A — Evidence pack (human runs in PowerShell)
+
+Manager tells Kevin: *open PowerShell, run this entire block, paste everything from `EVIDENCE_DIR=` onward (or the listed files).*
+
+```powershell
+$ErrorActionPreference = "Continue"
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$out = Join-Path $env:USERPROFILE "Desktop\pb-evidence-$ts"
+New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+$CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+$Brain = if ($env:PRIVATE_BRAIN_HOME) { $env:PRIVATE_BRAIN_HOME } else { Join-Path $CodexHome "private-brain" }
+$env:CODEX_HOME = $CodexHome
+$env:PRIVATE_BRAIN_HOME = $Brain
+$env:PYTHONPATH = Join-Path $Brain "scripts"
+
+$PyExe = Join-Path $Brain "venv\Scripts\python.exe"
+if (-not (Test-Path $PyExe)) { $PyExe = "python" }
+
+function Run-Save($name, [scriptblock]$sb) {
+  $path = Join-Path $out $name
+  Write-Host "`n=== $name ===" -ForegroundColor Cyan
+  try { $text = & $sb 2>&1 | Out-String } catch { $text = $_ | Out-String }
+  $text | Tee-Object -FilePath $path | Out-Host
+}
+
+Run-Save "00-env.txt" {
+  "CODEX_HOME=$CodexHome"
+  "PRIVATE_BRAIN_HOME=$Brain"
+  "PY=$PyExe"
+  "codex=$(try { (codex --version 2>&1 | Out-String).Trim() } catch { 'missing' })"
+  "python=$(& $PyExe --version 2>&1)"
+}
+
+Run-Save "01-hooks-head.txt" {
+  $hj = Join-Path $CodexHome "hooks.json"
+  if (Test-Path $hj) { Get-Content $hj -Raw } else { "MISSING hooks.json" }
+  Get-ChildItem (Join-Path $Brain "hooks") -ErrorAction SilentlyContinue |
+    Format-Table Name, Length -AutoSize | Out-String
+}
+
+Run-Save "02-hook-smoke.txt" {
+  $ss = Join-Path $Brain "hooks\session_start.py"
+  $st = Join-Path $Brain "hooks\stop_validate.py"
+  $ups = Join-Path $Brain "hooks\user_prompt_submit.py"
+  if (Test-Path $ss) {
+    $sw = Measure-Command { $script:so = ('{"source":"startup"}' | & $PyExe $ss 2>&1 | Out-String) }
+    "SESSION_START_MS=$([int]$sw.TotalMilliseconds)"
+    "SESSION_START_OUT=$so"
+  } else { "MISSING session_start.py" }
+  if (Test-Path $st) {
+    "STOP_BEAST_ACK=" + ('{"last_assistant_message":"Beast mode is already active."}' | & $PyExe $st 2>&1 | Out-String)
+    "STOP_UNCITED=" + ('{"last_assistant_message":"According to confluence the donut rules require X."}' | & $PyExe $st 2>&1 | Out-String)
+    "STOP_CITED=" + ('{"last_assistant_message":"See `confluence:page:633240886` for donut rules."}' | & $PyExe $st 2>&1 | Out-String)
+  }
+  if (Test-Path $ups) {
+    $uw = Measure-Command { $script:uo = ('{"prompt":"graph status cite nodes"}' | & $PyExe $ups 2>&1 | Out-String) }
+    "UPS_MS=$([int]$uw.TotalMilliseconds)"
+    "UPS_OUT=$($uo.Substring(0, [Math]::Min(600, $uo.Length)))"
+  }
+}
+
+Run-Save "03-doctor.txt" { & $PyExe (Join-Path $Brain "scripts\enterprise.py") doctor 2>&1 | Out-String }
+Run-Save "04-godseye.json" { & $PyExe (Join-Path $Brain "scripts\godseye.py") status --json 2>&1 | Out-String }
+Run-Save "05-product.json" { & $PyExe (Join-Path $Brain "scripts\product_readiness.py") 2>&1 | Out-String }
+Run-Save "06-e2e.json" { & $PyExe (Join-Path $Brain "scripts\e2e_status_report.py") 2>&1 | Out-String }
+Run-Save "07-neoj.json" {
+  & $PyExe (Join-Path $Brain "scripts\neoj_path_reconcile.py") --json 2>&1 | Out-String
+  & $PyExe (Join-Path $Brain "scripts\neoj_path_reconcile.py") --self-test 2>&1 | Out-String
+}
+Run-Save "08-donut.txt" {
+  & $PyExe -c @"
+import json,os,sys
+sys.path.insert(0, r'''$($Brain.Replace('\','\\'))\\scripts''')
+os.environ['PRIVATE_BRAIN_HOME']=r'''$Brain'''
+pid='confluence:page:633240886'
+try:
+  from brain_lib import node_path, read_json
+  p=node_path(pid)
+  print('exists', p.is_file(), p)
+  if p.is_file():
+    n=read_json(p) or {}
+    print(json.dumps({
+      'id': n.get('id'),
+      'chunk_ids': n.get('chunk_ids'),
+      'chunk_count': len(n.get('chunk_ids') or []),
+      'content_path': n.get('content_path'),
+      'title': n.get('title'),
+    }, indent=2))
+except Exception as e:
+  print('error', e)
+"@
+}
+
+Write-Host "EVIDENCE_DIR=$out"
+explorer $out
+```
+
+---
+
+### Phase A — Score table (5.6 marks the paste)
+
+| Check | Pass if pasted output shows |
+|-------|-----------------------------|
+| Wrappers | `pb-session-start.cmd`, `pb-user-prompt-submit.cmd`, `pb-stop-validate.cmd` present under hooks |
+| hooks.json | `commandWindows` references those `.cmd` files (not multiline raw python) |
+| SessionStart | JSON `continue`, **SESSION_START_MS &lt; 25000** (target &lt; 5000) |
+| Stop beast ack | `{"continue":true}` — **not** `decision":"block"` |
+| Stop uncited | `decision":"block"` under enterprise |
+| Stop cited | continue / not block when message cites `` `confluence:page:633240886` `` |
+| UPS | UPS_MS &lt; 40000; single JSON object |
+| product_readiness | `installer_integration: true` + ask/agent/tui/providers true |
+| GodsEye JSON | keys: enabled, dismissed, pids, alive, backend, capability, last_error, last_started_at |
+| Neo self-test | self-test ok; live recon not `preserved_verified` if approved paths = 0 |
+| e2e_status_report | one JSON + summary; no crash |
+| Donut page | `chunk_count > 0` **or** honest missing / `no_content` |
+
+Missing scripts (`product_readiness.py`, etc.) → **install phase**, not pass.
+
+---
+
+### Phase B — Install repair (human pastes into **Codex CLI**, not the browser)
+
+Only if Phase A shows missing wrappers, readiness false, or pre-`364093e` engine.
+
+**5.6 → Kevin:** open Codex CLI (GPT 5.1), paste:
+
+```text
+You are on the Windows Private Brain laptop.
+
+1) CODEX_HOME default %USERPROFILE%\.codex ; PRIVATE_BRAIN_HOME default %CODEX_HOME%\private-brain
+2) Run:
+   python %PRIVATE_BRAIN_HOME%\scripts\install_hooks.py
+   python %PRIVATE_BRAIN_HOME%\scripts\install_local_rag.py
+3) If scripts missing: install/sideload latest windows-ready release, then re-run (2).
+4) Smoke:
+   - session_start {"source":"startup"} — elapsed ms + JSON head
+   - stop_validate: beast ack / uncited confluence / cited confluence:page:633240886
+   - product_readiness.py ; godseye.py status --json ; e2e_status_report.py
+5) Print markdown table: check | pass/fail | evidence snippet.
+Zero soft-pass. Do not start GodsEye GUI unless asked. Do not invent hosts/tokens.
+```
+
+Then 5.6 has Kevin re-run the short PowerShell smoke (hooks + readiness) so the **browser thread** has ground truth, not only Codex’s summary.
+
+---
+
+### Phase C — Optional mutates (after baseline)
+
+**Donut rechunk** (only if page exists with content and `chunk_count=0`):
+
+```powershell
+$Brain = if ($env:PRIVATE_BRAIN_HOME) { $env:PRIVATE_BRAIN_HOME } else { Join-Path $env:USERPROFILE ".codex\private-brain" }
+$Py = Join-Path $Brain "venv\Scripts\python.exe"
+if (-not (Test-Path $Py)) { $Py = "python" }
+& $Py "$Brain\scripts\confluence_page_rechunk.py" --page-id confluence:page:633240886
+```
+
+If `no_content` / missing node → report need for AppGate + bounded Confluence ingest (**not** synchronous UPS). Do not invent page body.
+
+**GodsEye GUI** (only if Kevin wants the window):
+
+```powershell
+python "$env:PRIVATE_BRAIN_HOME\scripts\godseye.py" start
+python "$env:PRIVATE_BRAIN_HOME\scripts\godseye.py" status --json
+```
+
+Pass = `alive_count > 0` and honest `claim_started_ok`. `enabled=true` with `alive_count=0` is degraded-but-honest until start.
+
+---
+
+### Phase D — Optional live Codex session (UI)
+
+```powershell
+codex -p beast-enterprise
+```
+
+In chat: `Beast mode is already active.` → must not get `no_evidence_refuse`.  
+Factual Confluence claim without cite → Stop should block.  
+Paste any Stop `reason` text into the browser thread verbatim.
+
+---
+
+### Phase E — Handoff back to architect (Grok / next engineer)
+
+When hard gates pass or work is blocked, 5.6 produces **one** markdown block for Kevin to forward:
+
+```markdown
+## Laptop evidence handoff
+- Codex version:
+- PRIVATE_BRAIN_HOME:
+- Release/commit:
+- SessionStart_ms / UPS_ms:
+- Stop beast / uncited / cited:
+- product_readiness.installer_integration:
+- godseye enabled / alive_count / dismissed:
+- donut chunk_count / reason:
+- neo path_identity_status:
+- e2e classification:
+- Open gaps (bullets only):
+- Evidence folder:
+```
+
+Attach key JSON under each field. No essays.
+
+---
+
+### Hard “done testing” definition
+
+- [ ] Evidence folder from Phase A exists  
+- [ ] Hooks use permanent `.cmd` wrappers  
+- [ ] SessionStart/UPS under budget on **this** machine  
+- [ ] Stop ops + cite rules match score table  
+- [ ] local-rag readiness all true  
+- [ ] GodsEye JSON honest (GUI only if start requested)  
+- [ ] Neo recon not lying about paths  
+- [ ] Donut: chunks &gt; 0 **or** documented `no_content` + next step  
+- [ ] One `e2e_status_report` classification defended by files  
+
+**Not done:** agent counts, token burn, pretty graph with no proof, soft-pass on doctor/nuclear.
 
