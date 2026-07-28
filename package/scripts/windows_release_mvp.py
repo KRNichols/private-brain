@@ -896,19 +896,32 @@ def phase9b_laptop_sim() -> None:
         gate("laptop_sim_harness", False, "missing laptop_sim_harness.py")
         return
     r = _run([sys.executable, str(sp)], env=env, timeout=600, cwd=ROOT)
-    gate("laptop_sim_harness", r.returncode == 0, (r.stdout or r.stderr or "")[-500:])
+    # Prefer structured report for failure names (stdout is huge / truncated)
     rep = ROOT / "e2e-reports" / "LAPTOP_SIM.json"
+    fail_names: list[str] = []
     if rep.is_file():
         try:
             d = json.loads(rep.read_text(encoding="utf-8"))
+            fail_names = [
+                str(x.get("name"))
+                for x in (d.get("results") or [])
+                if isinstance(x, dict) and not x.get("ok")
+            ]
+            gate(
+                "laptop_sim_harness",
+                r.returncode == 0 and d.get("ok") is True and int(d.get("fail") or 0) == 0,
+                f"pass={d.get('pass')} fail={d.get('fail')} fails={fail_names} tail={(r.stdout or '')[-200:]}",
+            )
             gate(
                 "laptop_sim_report_ok",
                 d.get("ok") is True and int(d.get("fail") or 0) == 0,
-                f"pass={d.get('pass')} fail={d.get('fail')}",
+                f"pass={d.get('pass')} fail={d.get('fail')} fails={fail_names}",
             )
         except Exception as e:
+            gate("laptop_sim_harness", r.returncode == 0, (r.stdout or r.stderr or "")[-400:])
             gate("laptop_sim_report_ok", False, str(e))
     else:
+        gate("laptop_sim_harness", r.returncode == 0, (r.stdout or r.stderr or "")[-400:])
         gate("laptop_sim_report_ok", False, "LAPTOP_SIM.json missing")
 
 
