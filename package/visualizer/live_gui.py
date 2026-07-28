@@ -198,89 +198,282 @@ STAGE_ORDER = [
     "validate", "metrics", "synthesize", "critic", "rate", "optimize", "emit",
 ]
 STAGE_LABEL = {
-    "boot": "Boot brain + snapshot",
-    "swarm": "Multi-agent shared-graph sweep",
-    "cost": "Budget / rate limits",
-    "security": "Audit chain + secret scan",
-    "retrieve": "Hybrid search (vector + lexical)",
-    "crawl_gap": "Fill thin evidence (crawl)",
-    "validate": "Evidence + chain gate",
-    "metrics": "KPIs / signals / planning",
-    "synthesize": "Bullets with citations",
-    "critic": "Peer-review synthesis",
-    "rate": "Concert quality band",
-    "optimize": "Graph hygiene / reindex",
-    "emit": "Pack context for Codex",
+    "boot": "Start — load brain snapshot",
+    "swarm": "Many workers scan the graph together",
+    "cost": "Check money/rate limits",
+    "security": "Check audit chain + secrets",
+    "retrieve": "Search graph for evidence",
+    "crawl_gap": "Fetch more data if evidence thin",
+    "validate": "Quality gate on evidence",
+    "metrics": "Scoreboard / health numbers",
+    "synthesize": "Write answer with citations",
+    "critic": "Second opinion on the answer",
+    "rate": "Grade the concert (pass/fail band)",
+    "optimize": "Cleanup graph if grade was weak",
+    "emit": "Hand final context to Codex",
 }
-# Hover encyclopedia: what / why / when (config filled live from env + last_dag)
+# Plain-English encyclopedia for every concert stage (hover the pipeline row).
 STAGE_EXPLAIN: dict[str, dict[str, str]] = {
     "boot": {
-        "what": "Load graph snapshot, flags, and concert run_id.",
-        "why": "Every concert needs a consistent brain root before agents touch the graph.",
-        "when": "Always — first stage of every concert / dag_turn.",
+        "plain": "Turns the brain on for this run — loads the saved graph picture.",
+        "what": "Load graph snapshot, flags, and a unique concert run_id.",
+        "why": "Everything later needs the same brain root so answers stay consistent.",
+        "when": "Always first. Every concert starts here.",
+        "ok": "Brain loaded. Safe to continue.",
+        "fail": "Could not load brain/snapshot — fix install path or reinstall.",
+        "skip": "Should not skip. If gray, concert has not run yet.",
     },
     "swarm": {
-        "what": "N agents write/read one shared topology (no job queue).",
-        "why": "Fan-out retrieval, tagging, linking, and gap-finding in parallel.",
-        "when": "When PB_SWARM_AGENTS>0 (product default 16). Set 0 to skip.",
+        "plain": "Several local workers look at the SAME graph at once (not chatbots).",
+        "what": "N local graph workers tag, link, and hunt gaps on one shared topology.",
+        "why": "Faster parallel graph work without a job queue.",
+        "when": "When swarm count > 0 (default 16). Set 0 in Config to skip on purpose.",
+        "ok": "Workers finished their pass.",
+        "fail": "Swarm crashed — check logs / venv / disk.",
+        "skip": "Normal if swarm=0 or cooled down — not a failure.",
     },
     "cost": {
+        "plain": "Safety check: are we allowed to spend crawl/API budget right now?",
         "what": "Budget + crawl rate-limit checks before expensive work.",
-        "why": "Stops unbounded crawl/API spend; enterprise cost law.",
-        "when": "Always early in the concert (after boot/swarm).",
+        "why": "Stops unbounded spend (enterprise cost law).",
+        "when": "Always early (after boot/swarm).",
+        "ok": "Budget OK to proceed.",
+        "fail": "Budget/rate check failed — wait or raise limits.",
+        "skip": "Rare; if gray, stage not reached yet.",
     },
     "security": {
+        "plain": "Makes sure the audit log was not tampered with and secrets look clean.",
         "what": "Verify append-only audit chain + secret scan posture.",
-        "why": "Fail-closed enterprise: broken chain must not go silent.",
+        "why": "Broken chain must not go silent (fail-closed).",
         "when": "Always before emit; may seal/retry on chain break.",
+        "ok": "Chain intact.",
+        "fail": "Chain break or secret issue — do not ignore.",
+        "skip": "Rare; if gray, not reached yet.",
     },
     "retrieve": {
-        "what": "Hybrid graph retrieve (lexical + vectors) into evidence.",
-        "why": "Ground synthesis in real nodes (cite-or-block).",
-        "when": "Always. Thin/empty evidence can re-route to crawl_gap.",
+        "plain": "Search the private brain for facts that answer the prompt.",
+        "what": "Hybrid search (word match + vectors) into an evidence pack.",
+        "why": "Answers must cite real nodes (cite-or-block).",
+        "when": "Always. Thin evidence can trigger crawl_gap next.",
+        "ok": "Evidence pack built.",
+        "fail": "Retrieve failed — empty graph or index broken.",
+        "skip": "If gray, concert has not hit search yet.",
     },
     "crawl_gap": {
+        "plain": "Only if search found too little: go fetch more from connected systems.",
         "what": "Bounded crawl/ingest to fill thin evidence.",
-        "why": "Recovery path when retrieve gap=true or empty evidence.",
-        "when": "Only if retrieve is thin AND crawl allowed; else skip (cooldown/budget).",
+        "why": "Recovery when the local graph is not enough.",
+        "when": "ONLY if retrieve is thin AND crawl is allowed. Else SKIP is normal.",
+        "ok": "Fetched extra evidence.",
+        "fail": "Crawl failed (network, auth, budget).",
+        "skip": "NORMAL most of the time — cooldown, budget, or evidence already enough. Not a failure.",
     },
     "validate": {
+        "plain": "Quality check: is the evidence good enough to trust?",
         "what": "Gate evidence quality and concert structure.",
         "why": "Blocks garbage evidence from becoming confident answers.",
-        "when": "Always after retrieve (+ optional crawl re-retrieve).",
+        "when": "Always after retrieve (+ optional re-retrieve after crawl).",
+        "ok": "Evidence passed the gate.",
+        "fail": "Evidence failed quality — do not trust emit.",
+        "skip": "If gray, not reached yet.",
     },
     "metrics": {
+        "plain": "Snapshots numbers for the scoreboard you see on the right.",
         "what": "KPIs, signals, planning metrics snapshot.",
-        "why": "Feeds rate band + GodsEye metrics panel.",
-        "when": "Always (parallel with validate).",
+        "why": "Feeds rate band + this Live Ops metrics panel.",
+        "when": "Always (often parallel with validate).",
+        "ok": "Metrics written.",
+        "fail": "Could not write metrics.",
+        "skip": "If gray, not reached yet.",
     },
     "synthesize": {
+        "plain": "Write the human-facing answer using only cited graph nodes.",
         "what": "Build cited bullets from evidence only.",
-        "why": "Human-facing answer material with node_id cites.",
+        "why": "Operator gets answers with node_id cites, not free invention.",
         "when": "Always after validate when evidence path runs.",
+        "ok": "Draft answer ready.",
+        "fail": "Could not synthesize — empty or blocked evidence.",
+        "skip": "If gray, not reached yet.",
     },
     "critic": {
-        "what": "Peer-review synthesis for hallucinations / weak cites.",
-        "why": "Second mind before rate/emit; can demote score.",
-        "when": "Always after synthesize in full concert.",
+        "plain": "A second pass that nitpicks the answer for weak cites / hallucinations.",
+        "what": "Peer-review synthesis for weak cites / hallucinations.",
+        "why": "Can demote the score before you ship context to the model.",
+        "when": "Always after synthesize in a full concert.",
+        "ok": "Critic accepted (or noted issues without hard fail).",
+        "fail": "Critic rejected quality — expect optimize or weak band.",
+        "skip": "If gray, not reached yet.",
     },
     "rate": {
-        "what": "Score concert quality → band (e.g. SAP_SHIP / PASS / FAIL).",
-        "why": "Decides whether optimize is needed; operator dashboard.",
+        "plain": "Final grade for this concert (e.g. SAP_SHIP / PASS / FAIL).",
+        "what": "Score concert quality into a band.",
+        "why": "Decides if optimize is needed; drives operator dashboard.",
         "when": "Always after critic.",
+        "ok": "Grade recorded (read band in detail).",
+        "fail": "Rating step itself failed.",
+        "skip": "If gray, not reached yet.",
     },
     "optimize": {
+        "plain": "Cleanup/reindex only when the grade was weak — not every time.",
         "what": "Graph hygiene / reindex / no-relearn polish.",
         "why": "Repair weak concerts; avoid churn when already green.",
-        "when": "Only if FAIL/weak score/critic FAIL or PB_ALWAYS_OPTIMIZE=1.",
+        "when": "ONLY if FAIL/weak score/critic FAIL or Config forces always-optimize.",
+        "ok": "Cleanup finished.",
+        "fail": "Optimize failed — check logs.",
+        "skip": "NORMAL when concert already green (SAP_SHIP). Not a failure.",
     },
     "emit": {
-        "what": "Pack final context for Codex (hooks inject).",
-        "why": "Hand the model only recovered, cited graph context.",
-        "when": "Always at end of concert when final_ok path completes.",
+        "plain": "Package the final cited context so Codex hooks can inject it.",
+        "what": "Pack final context for Codex (hooks inject into the session).",
+        "why": "Model only sees recovered, cited graph context.",
+        "when": "Always at the end when the final_ok path completes.",
+        "ok": "Context ready for the model.",
+        "fail": "Emit failed — model may lack graph context.",
+        "skip": "If gray, concert not finished.",
     },
 }
+
+# Hover encyclopedia for chrome (buttons, KPIs, panels) — stay self-explanatory.
+UI_HELP: dict[str, dict[str, object]] = {
+    "help": {
+        "title": "Help button (or press H)",
+        "lines": [
+            "Opens the operator guide: colors, keys, what each panel means.",
+            "You should not need outside docs for day-to-day GodsEye use.",
+            "Press H or Esc again to close.",
+        ],
+    },
+    "config": {
+        "title": "Config — stage knobs for the next concert",
+        "lines": [
+            "Set how many local swarm workers run (0 / 8 / 16 / 32 / 64).",
+            "Swarm workers = local graph helpers, NOT ChatGPT/Grok chat agents.",
+            "Toggle: always-optimize, allow crawl when evidence is thin.",
+            "Save, or Save + run concert to apply immediately.",
+            "Saved under .brain/state/stage_config.json",
+        ],
+    },
+    "jobs": {
+        "title": "Jobs — run brain work from this window",
+        "lines": [
+            "Start a full concert, doctor checks, reindex, reload snapshot, etc.",
+            "Jobs run in the background; the graph keeps moving (LIVE).",
+            "Press number keys 1–7 while the menu is open for shortcuts.",
+            "J or Esc closes the menu.",
+        ],
+    },
+    "close": {
+        "title": "Close Live Ops",
+        "lines": [
+            "Quits GodsEye only — does not delete your brain or graph.",
+            "Keyboard: Q or Esc (Esc closes menus first).",
+        ],
+    },
+    "health": {
+        "title": "Health strip — overall concert traffic light",
+        "lines": [
+            "GREEN Healthy = no stage is currently FAIL.",
+            "YELLOW Caution = one or more stages still running.",
+            "RED Unhealthy = at least one stage FAIL — open pipeline rows for why.",
+            "Second line names what is running or which stages failed.",
+            "This is about the last concert stages — not disk space.",
+        ],
+    },
+    "kpi_nodes": {
+        "title": "Graph nodes (count)",
+        "lines": [
+            "How many knowledge nodes are in the graph snapshot.",
+            "A node is one fact unit: issue, MR, page, file chunk, etc.",
+            "If Live Ops caps the draw, the graph may show fewer dots than this number.",
+        ],
+    },
+    "kpi_edges": {
+        "title": "Edges (links between nodes)",
+        "lines": [
+            "How many relationships connect nodes (HAS_ISSUE, CONTAINS, …).",
+            "More edges = denser knowledge mesh for retrieve to walk.",
+        ],
+    },
+    "kpi_vectors": {
+        "title": "Vectors (search embeddings on disk)",
+        "lines": [
+            "How many embedding vectors are in the local index.",
+            "Used for meaning-based search (not just exact keywords).",
+            "See VECTOR SEARCH INDEX panel for coverage bar.",
+        ],
+    },
+    "kpi_disk": {
+        "title": "On disk — core graph size",
+        "lines": [
+            "Bytes used by nodes/ + edges/ + graph/ (snapshot kit).",
+            "Hover the yellow chip on the Knowledge Graph panel for full breakdown.",
+            "Whole .brain folder is larger (includes content, index, audit, logs).",
+        ],
+    },
+    "graph": {
+        "title": "Knowledge Graph panel",
+        "lines": [
+            "Each dot is a node. Clusters = sources (gitlab, jira, …) as round islands.",
+            "Fill color = trust tier T0 (best) … T3 (low). Ring = source system.",
+            "Hover a dot for title/id. Click a dot for origin trail (how it was born).",
+            "Drag to pan. Mouse wheel to zoom. R reshuffles islands. Space pauses motion.",
+            "All dots and labels stay clipped inside this panel.",
+        ],
+    },
+    "disk_chip": {
+        "title": "Graph size on disk",
+        "lines": [
+            "Big number = core graph store size (nodes + edges + snapshot).",
+            "Mini bar colors: blue=nodes, cyan=edges, green=snapshot kit.",
+            "Hover for full .brain breakdown (index, content, total).",
+        ],
+    },
+    "pipeline": {
+        "title": "Concert stages (pipeline)",
+        "lines": [
+            "A concert is one full brain run: boot → … → emit.",
+            "Hover ANY stage row for plain English: what / why / when / status meaning.",
+            "GRAY skip is often intentional (cooldown, already green) — not a crash.",
+            "Click a stage to pin its explanation card.",
+            "Dot color: green ok, yellow running, red fail, gray idle/skip.",
+        ],
+    },
+    "vectors": {
+        "title": "Vector search index",
+        "lines": [
+            "Local embeddings used for semantic retrieve.",
+            "Coverage bar ≈ vectors / graph nodes (higher is better for meaning search).",
+            "Run Jobs → Reindex vectors if this stays near zero after ingest.",
+        ],
+    },
+    "metrics": {
+        "title": "Metrics traffic lights",
+        "lines": [
+            "Signals from the last scoreboard (green/yellow/red).",
+            "Empty until a concert writes metrics — use Jobs → Rerun concert.",
+            "Red signals need attention; yellow is caution; green is good.",
+        ],
+    },
+    "activity": {
+        "title": "Activity log",
+        "lines": [
+            "Recent Live Ops events: reloads, jobs, pathway fires, layout.",
+            "Scroll with mouse wheel while pointer is over the right column.",
+        ],
+    },
+    "trail": {
+        "title": "Origin trail (selected node)",
+        "lines": [
+            "Shows how this node was born: leaf → parent → root.",
+            "Keys: [ or ← walk toward root · ] or → walk toward leaf.",
+            "Enter reloads on-disk text snippet. Backspace clears selection.",
+            "Green path on the graph highlights the same lineage.",
+        ],
+    },
+}
+
 STAGE_COLOR = {
+
     "pending": GRAY,
     "running": YELLOW,
     "ok": GREEN,
@@ -609,18 +802,21 @@ class LiveState:
         """Encyclopedia lines for the on-disk size chip."""
         d = self.disk_stats or {}
         lines = [
-            f"Core graph:  {format_bytes(d.get('graph_total_b'))}  (nodes + edges + snapshot)",
-            f"  nodes/     {format_bytes(d.get('nodes_b'))}",
-            f"  edges/     {format_bytes(d.get('edges_b'))}",
-            f"  graph/     {format_bytes(d.get('graph_b'))}  (incl. snapshot {format_bytes(d.get('snapshot_b'))})",
-            f"Vectors:     {format_bytes(d.get('index_b'))}  (index/embeddings)",
-            f"Content:     {format_bytes(d.get('content_b'))}  (raw text files)",
-            f"Whole .brain {format_bytes(d.get('brain_b'))}",
-            f"Path: {(brain_dir())}",
+            "IN PLAIN ENGLISH: how much hard-drive space the private brain graph uses.",
+            f"Core graph (what Live Ops cares about most): {format_bytes(d.get('graph_total_b'))}",
+            f"  · nodes/ folder (one file per knowledge unit): {format_bytes(d.get('nodes_b'))}",
+            f"  · edges/ folder (links between units): {format_bytes(d.get('edges_b'))}",
+            f"  · graph/ snapshot kit: {format_bytes(d.get('graph_b'))} "
+            f"(snapshot.json {format_bytes(d.get('snapshot_b'))})",
+            f"Vector index (meaning search): {format_bytes(d.get('index_b'))}",
+            f"Raw content text files: {format_bytes(d.get('content_b'))}",
+            f"Entire .brain folder (everything): {format_bytes(d.get('brain_b'))}",
+            f"Folder path: {brain_dir()}",
         ]
         age = time.time() - float(d.get("updated_at") or 0)
         if age < 1e6:
-            lines.append(f"Measured {int(age)}s ago · refreshes on snapshot reload / ~45s")
+            lines.append(f"Measured {int(age)}s ago · auto-refreshes on reload / every ~45s")
+        lines.append("This card never overflows — numbers stay inside the pane.")
         return lines
 
     def _rebuild_adjacency(self) -> None:
@@ -1216,6 +1412,47 @@ def draw_text(screen, font, text, x, y, color=TEXT):
     screen.blit(font.render(str(text), True, color), (x, y))
 
 
+def draw_text_in(
+    screen,
+    font,
+    text: str,
+    rect: pygame.Rect,
+    color=TEXT,
+    *,
+    pad_x: int = 0,
+    pad_y: int = 0,
+    max_lines: int = 1,
+) -> None:
+    """Draw text clipped + wrapped/ellipsized so it never leaves rect."""
+    if rect.w < 8 or rect.h < 4:
+        return
+    prev = screen.get_clip()
+    screen.set_clip(rect)
+    max_w = max(8, rect.w - pad_x * 2)
+    x = rect.x + pad_x
+    y = rect.y + pad_y
+    if max_lines <= 1:
+        draw_text(screen, font, ellipsize(font, str(text or ""), max_w), x, y, color)
+    else:
+        for line in wrap_text(font, str(text or ""), max_w, max_lines=max_lines):
+            if y + font.get_height() > rect.bottom:
+                break
+            draw_text(screen, font, line, x, y, color)
+            y += font.get_height() + 2
+    screen.set_clip(prev)
+
+
+def ui_help_lines(key: str) -> tuple[str, list[str]]:
+    """Return (title, lines) for a chrome hover key."""
+    blob = UI_HELP.get(key) or {}
+    title = str(blob.get("title") or key)
+    lines = list(blob.get("lines") or [])
+    if not lines:
+        lines = ["Hover targets show full explanations inside their own card."]
+    lines.append("All explanations stay inside this card (never overflow).")
+    return title, lines
+
+
 def ellipsize(font, text: str, max_w: int) -> str:
     """Truncate with … so rendered text fits max_w pixels."""
     t = str(text or "")
@@ -1306,14 +1543,16 @@ def flyout(
         text = (row or "").replace("\n", " ").strip()
         if not text:
             continue
-        for chunk in wrap_text(font_xs, text, text_max_w, max_lines=6):
+        # Generous wrap so encyclopedia lines don't get cut mid-thought
+        for chunk in wrap_text(font_xs, text, text_max_w, max_lines=8):
             wrapped.append((chunk, False))
     if not wrapped:
         return
 
     # Height from lines; clamp and drop overflow with a final "…" line
+    # (never draw outside the flyout pane)
     line_gap_title = 4
-    line_gap_body = 3
+    line_gap_body = 2
     th = pad * 2
     for _, is_t in wrapped:
         th += (font.get_height() + line_gap_title) if is_t else (font_xs.get_height() + line_gap_body)
@@ -1324,7 +1563,7 @@ def flyout(
         for row, is_t in wrapped:
             add = (font.get_height() + line_gap_title) if is_t else (font_xs.get_height() + line_gap_body)
             if th + add + font_xs.get_height() + line_gap_body > max_h:
-                kept.append(("…", False))
+                kept.append(("… (scroll not needed — hover stays pinned if you click a stage)", False))
                 th += font_xs.get_height() + line_gap_body
                 break
             kept.append((row, is_t))
@@ -1448,24 +1687,34 @@ def _stage_config_lines(state: "AppState", stg: str) -> list[str]:
 
 
 def stage_hover_lines(state: "AppState", stg: str) -> list[str]:
-    """Full stage encyclopedia for hover/pin flyout."""
+    """Full stage encyclopedia for hover/pin flyout — plain English, no jargon walls."""
     exp = STAGE_EXPLAIN.get(stg) or {}
     st = state.stage_status.get(stg, "pending")
     col_name = {
-        "ok": "GREEN / GO",
-        "running": "YELLOW / RUNNING",
-        "fail": "RED / STOP",
-        "pending": "GRAY / IDLE",
-        "skip": "GRAY / SKIP (intentional)",
+        "ok": "GREEN = GO (finished OK)",
+        "running": "YELLOW = RUNNING right now",
+        "fail": "RED = STOP (failed — needs attention)",
+        "pending": "GRAY = IDLE (not started yet)",
+        "skip": "GRAY = SKIP (intentional — usually NOT a failure)",
     }.get(st, st)
+    status_meaning = {
+        "ok": exp.get("ok") or "Stage completed successfully.",
+        "running": "This stage is executing now — wait for green or red.",
+        "fail": exp.get("fail") or "Stage failed — read detail line and logs.",
+        "pending": "Waiting for earlier stages or a new concert.",
+        "skip": exp.get("skip") or "Skipped on purpose (cooldown, budget, already green).",
+    }.get(st, "")
     lines = [
-        f"What: {exp.get('what') or STAGE_LABEL.get(stg, stg)}",
-        f"Why:  {exp.get('why') or '—'}",
-        f"When: {exp.get('when') or '—'}",
-        f"Status now: {col_name}",
+        f"IN PLAIN ENGLISH: {exp.get('plain') or exp.get('what') or STAGE_LABEL.get(stg, stg)}",
+        f"WHAT IT DOES: {exp.get('what') or STAGE_LABEL.get(stg, stg)}",
+        f"WHY IT EXISTS: {exp.get('why') or '—'}",
+        f"WHEN IT RUNS: {exp.get('when') or '—'}",
+        f"RIGHT NOW: {col_name}",
+        f"  → {status_meaning}",
     ]
     lines.extend(_stage_config_lines(state, stg))
-    lines.append("Click stage to pin this card")
+    lines.append("Click this row to PIN the card (stays open). Click again or elsewhere to unpin.")
+    lines.append("All text stays inside this card — nothing runs off the screen.")
     return lines
 
 
@@ -1670,39 +1919,42 @@ def config_overlay(
     H: int,
     config_hitboxes: list,
 ) -> None:
-    """Stage config: swarm agent count, always optimize, allow crawl."""
+    """Stage config: swarm agent count, always optimize, allow crawl — all text clipped."""
     config_hitboxes.clear()
     pad = 14
-    box_w = min(560, W - 40)
-    box_h = 340
+    box_w = min(580, W - 40)
+    box_h = min(400, H - 48)
     box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
     veil = pygame.Surface((W, H), pygame.SRCALPHA)
     veil.fill((0, 0, 0, 150))
     screen.blit(veil, (0, 0))
     rounded_panel(screen, box, PANEL, ACCENT, 12)
-    draw_text(screen, font, "STAGE CONFIG", box.x + pad, box.y + 10, TEXT)
-    draw_text(
+    inner = box.inflate(-pad * 2, -pad * 2)
+    prev = screen.get_clip()
+    screen.set_clip(box.inflate(-4, -4))
+
+    draw_text_in(screen, font, "CONFIG — next concert knobs", inner, TEXT, pad_y=0)
+    draw_text_in(
         screen,
         font_xs,
-        "Swarm = local graph workers (agent_swarm) — NOT Grok/Codex chat agents",
-        box.x + pad,
-        box.y + 34,
+        "Swarm workers = local graph helpers that scan YOUR private brain. "
+        "They are NOT ChatGPT, Grok, or Codex chat agents.",
+        pygame.Rect(inner.x, inner.y + 28, inner.w, 36),
         YELLOW,
+        max_lines=2,
     )
-    draw_text(
+    draw_text_in(
         screen,
         font_xs,
-        "Saved to .brain/state/stage_config.json · used by Jobs concerts",
-        box.x + pad,
-        box.y + 50,
+        "Saved to .brain/state/stage_config.json · used the next time you run Jobs → concert",
+        pygame.Rect(inner.x, inner.y + 66, inner.w, 18),
         TEXT_MUTED,
     )
 
     cfg = state.stage_config or load_stage_config_file()
-    y = box.y + 78
-    draw_text(screen, font_sm, "SWARM AGENTS (per concert)", box.x + pad, y, TEXT_DIM)
+    y = inner.y + 96
+    draw_text(screen, font_sm, "HOW MANY SWARM WORKERS?", box.x + pad, y, TEXT_DIM)
     y += 22
-    # Preset chips
     presets = [0, 8, 16, 32, 64]
     x = box.x + pad
     cur = int(cfg.get("swarm_agents") or 16)
@@ -1723,51 +1975,53 @@ def config_overlay(
         )
         config_hitboxes.append((chip, f"swarm:{n}"))
         x += tw + 8
-    y += 40
-    draw_text(
+    y += 36
+    draw_text_in(
         screen,
         font_xs,
-        f"Current: {cur}  ·  next concert will call agent_swarm with N workers",
-        box.x + pad,
-        y,
+        f"Selected: {cur}  ·  0=skip swarm  ·  16=default  ·  64=max  ·  applies on next concert",
+        pygame.Rect(inner.x, y, inner.w, 18),
         TEXT_MUTED,
     )
     y += 28
 
-    # Toggles
-    for tid, label, key in (
-        ("opt", "Always run optimize stage (even when SAP_SHIP)", "always_optimize"),
-        ("crawl", "Allow crawl_gap when evidence is thin", "allow_crawl"),
+    for label, key in (
+        ("Always run optimize (even when grade already green)", "always_optimize"),
+        ("Allow crawl when evidence is thin (needs network/auth)", "allow_crawl"),
     ):
         on = bool(cfg.get(key))
-        row = pygame.Rect(box.x + pad, y, box.w - pad * 2, 30)
+        row = pygame.Rect(box.x + pad, y, box.w - pad * 2, 32)
         pygame.draw.rect(screen, PANEL_2 if on else PANEL, row, border_radius=6)
         pygame.draw.rect(screen, GREEN if on else BORDER, row, 1, border_radius=6)
-        mark = "[ON] " if on else "[off]"
-        draw_text(screen, font_sm, f"{mark}  {label}", row.x + 10, row.y + 7, TEXT)
+        mark = "ON " if on else "off"
+        draw_text_in(
+            screen,
+            font_sm,
+            f"[{mark}]  {label}",
+            row.inflate(-16, -8),
+            TEXT,
+        )
         config_hitboxes.append((row, f"toggle:{key}"))
-        y += 38
+        y += 40
 
-    y += 8
-    # Actions
+    y += 4
     save_btn = pygame.Rect(box.x + pad, y, 140, 32)
-    run_btn = pygame.Rect(box.x + pad + 152, y, 200, 32)
+    run_btn = pygame.Rect(box.x + pad + 152, y, 220, 32)
     pygame.draw.rect(screen, PANEL_2, save_btn, border_radius=6)
     pygame.draw.rect(screen, ACCENT, save_btn, 1, border_radius=6)
-    draw_text(screen, font_sm, "Save config", save_btn.x + 24, save_btn.y + 8, TEXT)
+    draw_text(screen, font_sm, "Save only", save_btn.x + 28, save_btn.y + 8, TEXT)
     config_hitboxes.append((save_btn, "action:save"))
     pygame.draw.rect(screen, ACCENT, run_btn, border_radius=6)
-    draw_text(screen, font_sm, "Save + run concert", run_btn.x + 22, run_btn.y + 8, TEXT)
+    draw_text(screen, font_sm, "Save + run concert now", run_btn.x + 18, run_btn.y + 8, TEXT)
     config_hitboxes.append((run_btn, "action:save_run"))
-    y += 42
-    draw_text(
+    draw_text_in(
         screen,
         font_xs,
-        "C / Esc close · pick swarm size then Save + run concert",
-        box.x + pad,
-        box.bottom - 24,
+        "C or Esc closes · pick a worker count · then Save + run concert",
+        pygame.Rect(inner.x, box.bottom - 28, inner.w, 18),
         TEXT_MUTED,
     )
+    screen.set_clip(prev)
 
 
 def jobs_overlay(
@@ -1794,20 +2048,40 @@ def jobs_overlay(
     veil.fill((0, 0, 0, 140))
     screen.blit(veil, (0, 0))
     rounded_panel(screen, box, PANEL, ACCENT, 12)
-    draw_text(screen, font, "JOBS — run from GodsEye", box.x + pad, box.y + 10, TEXT)
-    draw_text(screen, font_xs, "J / Esc close · click row or press number", box.x + pad, box.y + 32, TEXT_MUTED)
+    prev = screen.get_clip()
+    screen.set_clip(box.inflate(-4, -4))
+    draw_text_in(
+        screen,
+        font,
+        "JOBS — run brain work from this window",
+        pygame.Rect(box.x + pad, box.y + 8, box.w - pad * 2, 24),
+        TEXT,
+    )
+    draw_text_in(
+        screen,
+        font_xs,
+        "Click a row or press its number. Graph stays LIVE while jobs run in the background. J/Esc closes.",
+        pygame.Rect(box.x + pad, box.y + 30, box.w - pad * 2, 18),
+        TEXT_MUTED,
+    )
 
     # status line
     busy = state.job_busy
     st_col = YELLOW if busy else (GREEN if state.job_status == "ok" else (RED if state.job_status == "fail" else TEXT_MUTED))
-    st_line = f"status: {state.job_status}"
+    st_line = f"Last job: {state.job_status}"
     if state.job_id:
-        st_line += f" · last={state.job_id}"
+        st_line += f" · {state.job_id}"
     if state.job_message:
-        st_line += f" · {state.job_message[:55]}"
+        st_line += f" · {state.job_message}"
     if busy and state.job_started_at:
         st_line += f" · {int(time.time() - state.job_started_at)}s"
-    draw_text(screen, font_xs, st_line[:90], box.x + pad, box.y + title_h + 8, st_col)
+    draw_text_in(
+        screen,
+        font_xs,
+        st_line,
+        pygame.Rect(box.x + pad, box.y + title_h + 6, box.w - pad * 2, 18),
+        st_col,
+    )
 
     y = box.y + title_h + status_h + 8
     for job in JOB_MENU:
@@ -1817,14 +2091,35 @@ def jobs_overlay(
             pygame.draw.rect(screen, PANEL_2, row, border_radius=6)
         pygame.draw.rect(screen, BORDER if not hover else ACCENT, row, 1, border_radius=6)
         key_lab = str(job.get("key") or "")
-        draw_text(screen, font_sm, f"[{key_lab}]  {job['label']}", row.x + 10, row.y + 4, TEXT)
-        draw_text(screen, font_xs, str(job.get("desc") or "")[:70], row.x + 10, row.y + 18, TEXT_MUTED)
+        draw_text_in(
+            screen,
+            font_sm,
+            f"[{key_lab}]  {job['label']}",
+            pygame.Rect(row.x + 10, row.y + 3, row.w - 20, 16),
+            TEXT,
+        )
+        draw_text_in(
+            screen,
+            font_xs,
+            str(job.get("desc") or ""),
+            pygame.Rect(row.x + 10, row.y + 18, row.w - 20, 16),
+            TEXT_MUTED,
+        )
         job_hitboxes.append((row, job["id"]))
         y += row_h
-    if busy:
-        draw_text(screen, font_xs, "Job running in background — UI stays live…", box.x + pad, box.bottom - 22, YELLOW)
-    else:
-        draw_text(screen, font_xs, "Tip: Rerun concert = full swarm+retrieve DAG", box.x + pad, box.bottom - 22, TEXT_MUTED)
+    foot = (
+        "Job running in background — UI stays live…"
+        if busy
+        else "Tip: Rerun concert = full brain pipeline (swarm → retrieve → emit)"
+    )
+    draw_text_in(
+        screen,
+        font_xs,
+        foot,
+        pygame.Rect(box.x + pad, box.bottom - 24, box.w - pad * 2, 18),
+        YELLOW if busy else TEXT_MUTED,
+    )
+    screen.set_clip(prev)
 
 
 def _draw_key_chip(screen, font_xs, key: str, x: int, y: int, *, fill=PANEL_2, border=BORDER) -> int:
@@ -2235,6 +2530,8 @@ def main() -> int:
         state.tick += 1
         screen.fill(BG)
         stage_hitboxes = []
+        # (rect, help_key) — chrome encyclopedia; text always in flyout card
+        ui_hover_zones: list[tuple[pygame.Rect, str]] = []
 
         counts = state.stage_counts()
         health_lab, health_col, health_why = state.health()
@@ -2264,15 +2561,19 @@ def main() -> int:
         kpi_max_x = help_btn.x - 12
         disk_total = int((state.disk_stats or {}).get("graph_total_b") or 0)
         disk_lab = format_bytes(disk_total) if disk_total else "—"
-        for label, val, col in [
-            ("Graph nodes", nodes_n, ACCENT),
-            ("Edges", edges_n, CYAN),
-            ("Vectors", vec_n, GREEN),
-            ("On disk", disk_lab, YELLOW),
+        for label, val, col, hkey in [
+            ("Graph nodes", nodes_n, ACCENT, "kpi_nodes"),
+            ("Edges", edges_n, CYAN, "kpi_edges"),
+            ("Vectors", vec_n, GREEN, "kpi_vectors"),
+            ("On disk", disk_lab, YELLOW, "kpi_disk"),
         ]:
             col_w = 100 if label != "On disk" else 92
             if kx + col_w > kpi_max_x:
                 break
+            kpi_rect = pygame.Rect(kx - 4, 8, col_w - 4, TOP - 14)
+            ui_hover_zones.append((kpi_rect, hkey))
+            if kpi_rect.collidepoint(mx, my):
+                pygame.draw.rect(screen, PANEL_2, kpi_rect, border_radius=6)
             draw_text(screen, font_xs, label, kx, 12, TEXT_MUTED)
             draw_text(screen, font_kpi, str(val), kx, 30, col)
             kx += col_w
@@ -2311,6 +2612,10 @@ def main() -> int:
             accent_border=state.job_busy,
             hot=jobs_btn.collidepoint(mx, my),
         )
+        ui_hover_zones.append((help_btn, "help"))
+        ui_hover_zones.append((config_btn, "config"))
+        ui_hover_zones.append((jobs_btn, "jobs"))
+        ui_hover_zones.append((close_btn, "close"))
 
         # Health strip — exclusive column, never under buttons or help text
         running_stages = state.running_stages()
@@ -2340,6 +2645,7 @@ def main() -> int:
             pcol,
         )
         screen.set_clip(prev)
+        ui_hover_zones.append((status_strip, "health"))
 
         # × Close
         close_fill = RED if close_btn.collidepoint(mx, my) else PANEL_2
@@ -2351,6 +2657,7 @@ def main() -> int:
         # ── GRAPH ────────────────────────────────────────────────
         rounded_panel(screen, graph_rect, PANEL, BORDER if state.focus != 0 else ACCENT, 12)
         draw_text(screen, font_sm, "KNOWLEDGE GRAPH", graph_rect.x + 14, graph_rect.y + 10, TEXT_DIM)
+        ui_hover_zones.append((graph_rect, "graph"))
 
         # ── On-disk size chip (right of title) — nice compact universe meter ──
         dstat = state.disk_stats or {}
@@ -2401,11 +2708,11 @@ def main() -> int:
         total_n = state.snapshot_node_total or len(state.nodes)
         held_n = len(state.nodes)
         if state.viz_capped or held_n > DRAW_NODES or (total_n and held_n < total_n):
-            cap_txt = f"showing {shown_n}/{total_n} (cap hold {SNAPSHOT_VIZ_MAX} draw {DRAW_NODES})"
+            cap_txt = f"Showing {shown_n} of {total_n} nodes (cap {SNAPSHOT_VIZ_MAX}) · hover any dot for full detail"
             cap_col = YELLOW
         else:
-            motion = "paused" if state.layout_frozen else "LIVE"
-            cap_txt = f"{held_n} nodes · layout {motion} · R re-layout · Space pause · hover for detail"
+            motion = "PAUSED" if state.layout_frozen else "LIVE (always moving)"
+            cap_txt = f"{held_n} nodes · {motion} · hover anything for plain-English help · R reshuffle · Space pause"
             cap_col = TEXT_MUTED
         # Leave room for the disk chip on the right
         draw_text(
@@ -2500,17 +2807,34 @@ def main() -> int:
 
         screen.set_clip(prev)
 
-        # Origin trail card — crawl lineage + content snippet
+        # Origin trail card — crawl lineage + content snippet (all text clipped)
+        trail_card_rect = None
         if state.selected and state.selected in state.nodes:
             n = state.nodes[state.selected]
             has_trail = len(state.trail) > 1
             card_h = 118 if has_trail or state.trail_snippet else 64
             card = pygame.Rect(graph_rect.x + 10, graph_rect.bottom - card_h - 8, graph_rect.w - 20, card_h)
+            trail_card_rect = card
             rounded_panel(screen, card, PANEL_2, GREEN, 8)
-            title = (n.get("title") or n.get("id") or "")[:68]
-            draw_text(screen, font_sm, title, card.x + 12, card.y + 6, TEXT)
+            ui_hover_zones.append((card, "trail"))
+            prev_card = screen.get_clip()
+            screen.set_clip(card.inflate(-6, -6))
+            title = (n.get("title") or n.get("id") or "")
+            draw_text_in(
+                screen,
+                font_sm,
+                title,
+                pygame.Rect(card.x + 12, card.y + 6, card.w - 24, 18),
+                TEXT,
+            )
             meta = f"id={n.get('id')}  type={n.get('type')}  source={n.get('source')}  tier={n.get('tier')}"
-            draw_text(screen, font_xs, ellipsize(font_xs, meta, card.w - 24), card.x + 12, card.y + 26, TEXT_DIM)
+            draw_text_in(
+                screen,
+                font_xs,
+                meta,
+                pygame.Rect(card.x + 12, card.y + 26, card.w - 24, 16),
+                TEXT_DIM,
+            )
             # trail breadcrumb leaf → … → root
             if state.trail:
                 parts = []
@@ -2524,41 +2848,31 @@ def main() -> int:
                 crumb = " ← ".join(parts)
                 if len(state.trail) > 8:
                     crumb += " ← …"
-                draw_text(
+                draw_text_in(
                     screen,
                     font_xs,
-                    ellipsize(font_xs, f"origin {len(state.trail)}: {crumb}", card.w - 24),
-                    card.x + 12,
-                    card.y + 42,
+                    f"origin trail ({len(state.trail)} steps): {crumb}",
+                    pygame.Rect(card.x + 12, card.y + 42, card.w - 24, 16),
                     GREEN,
                 )
-                draw_text(
+                draw_text_in(
                     screen,
                     font_xs,
-                    "[ / ← root · ] / → leaf · Enter snippet · Backspace clear",
-                    card.x + 12,
-                    card.y + 56,
+                    "[ or ← toward root · ] or → toward leaf · Enter = text snippet · Backspace = clear",
+                    pygame.Rect(card.x + 12, card.y + 56, card.w - 24, 16),
                     TEXT_MUTED,
                 )
             if state.trail_snippet and card_h > 80:
-                snip = state.trail_snippet.replace("\n", " ")[:140]
-                draw_text(
+                snip = state.trail_snippet.replace("\n", " ")
+                draw_text_in(
                     screen,
                     font_xs,
-                    ellipsize(font_xs, snip, card.w - 24),
-                    card.x + 12,
-                    card.y + 74,
+                    snip,
+                    pygame.Rect(card.x + 12, card.y + 74, card.w - 24, 32),
                     TEXT_DIM,
+                    max_lines=2,
                 )
-                if len(state.trail_snippet) > 140:
-                    draw_text(
-                        screen,
-                        font_xs,
-                        ellipsize(font_xs, state.trail_snippet.replace("\n", " ")[140:280], card.w - 24),
-                        card.x + 12,
-                        card.y + 90,
-                        TEXT_MUTED,
-                    )
+            screen.set_clip(prev_card)
 
         # ── RIGHT COLUMN ─────────────────────────────────────────
         y = TOP + 8
@@ -2571,6 +2885,7 @@ def main() -> int:
         hcard_h = max(64, min(120, hcard_h))
         hcard = pygame.Rect(right_x, y, RIGHT_W, hcard_h)
         rounded_panel(screen, hcard, PANEL, health_col, 10)
+        ui_hover_zones.append((hcard, "health"))
         prev_clip = screen.get_clip()
         screen.set_clip(hcard.inflate(-4, -4))
         draw_text(screen, font_sm, title, hcard.x + 12, hcard.y + 10, health_col)
@@ -2592,16 +2907,23 @@ def main() -> int:
         pipe = pygame.Rect(right_x, y, RIGHT_W, min(pipe_h, max_pipe))
         rounded_panel(screen, pipe, PANEL, BORDER if state.focus != 1 else ACCENT, 10)
         draw_text(screen, font_sm, "CONCERT STAGES", pipe.x + 12, pipe.y + 8, TEXT_DIM)
+        ui_hover_zones.append((pipe, "pipeline"))
         # Show last concert age so stale skip (old last_dag) is obvious
         dag_ts = ""
         if isinstance(state._last_dag_data, dict):
             dag_ts = str(state._last_dag_data.get("ts") or "")[:19]
-        sub = "hover = what / why / when / config"
+        sub = "HOVER each row = plain English (what/why/when). GRAY skip is often OK."
         if dag_ts:
-            sub = f"last concert {dag_ts} · hover for config"
+            sub = f"Last concert {dag_ts} · hover any row for full story"
         if state.job_busy:
             sub = f"JOB {state.job_id} running… · {sub}"
-        draw_text(screen, font_xs, sub[:48], pipe.x + 12, pipe.y + 24, TEXT_MUTED)
+        draw_text_in(
+            screen,
+            font_xs,
+            sub,
+            pygame.Rect(pipe.x + 12, pipe.y + 24, pipe.w - 24, 16),
+            TEXT_MUTED,
+        )
         py = pipe.y + 40
         pulse = 0.55 + 0.45 * math.sin(state.tick * 0.12)
         for stg in STAGE_ORDER:
@@ -2619,7 +2941,13 @@ def main() -> int:
             prev_row = screen.get_clip()
             screen.set_clip(row)
             pygame.draw.circle(screen, col, (row.x + 12, py + 7), 5)
-            light = {"ok": "GO", "running": "…", "fail": "STOP", "pending": "·", "skip": "skip"}.get(st, st)
+            light = {
+                "ok": "OK",
+                "running": "RUN",
+                "fail": "FAIL",
+                "pending": "wait",
+                "skip": "skip=ok",
+            }.get(st, st)
             name_txt = f"{stg}  {light}"
             name_w = font_xs.size(name_txt)[0]
             draw_text(screen, font_xs, name_txt, row.x + 24, py, TEXT if st != "pending" else TEXT_MUTED)
@@ -2639,6 +2967,7 @@ def main() -> int:
         vs = state.vector_stats
         vec = pygame.Rect(right_x, y, RIGHT_W, 88)
         rounded_panel(screen, vec, PANEL, BORDER, 10)
+        ui_hover_zones.append((vec, "vectors"))
         draw_text(screen, font_sm, "VECTOR SEARCH INDEX", vec.x + 12, vec.y + 8, TEXT_DIM)
         draw_text(screen, font_kpi, str(vs.get("vectors", 0)), vec.x + 12, vec.y + 28, GREEN)
         idx_lab = format_bytes(int((state.disk_stats or {}).get("index_b") or 0))
@@ -2658,6 +2987,7 @@ def main() -> int:
         met_h = 34 + max(1, len(sig_items)) * 18 + 8
         met = pygame.Rect(right_x, y, RIGHT_W, met_h)
         rounded_panel(screen, met, PANEL, BORDER, 10)
+        ui_hover_zones.append((met, "metrics"))
         draw_text(screen, font_sm, "METRICS (green/yellow/red)", met.x + 12, met.y + 8, TEXT_DIM)
         my = met.y + 30
         scmap = {"green": GREEN, "yellow": YELLOW, "red": RED}
@@ -2676,6 +3006,7 @@ def main() -> int:
         if rem > 60:
             evp = pygame.Rect(right_x, y, RIGHT_W, rem)
             rounded_panel(screen, evp, PANEL, BORDER, 10)
+            ui_hover_zones.append((evp, "activity"))
             draw_text(screen, font_sm, "ACTIVITY (scroll)", evp.x + 12, evp.y + 8, TEXT_DIM)
             ey = evp.y + 28
             lines = list(state.event_log)
@@ -2698,73 +3029,94 @@ def main() -> int:
         clock_s = time.strftime("%H:%M:%S")
         draw_text(screen, font_xs, clock_s, W - font_xs.size(clock_s)[0] - 14, by + 3, TEXT_DIM)
 
-        # Flyouts (after main UI so they sit on top)
-        if state.hover_node and state.hover_node in state.nodes:
-            n = state.nodes[state.hover_node]
-            flyout(
-                screen,
-                font_sm,
-                font_xs,
-                [
-                    f"type: {n.get('type')}",
-                    f"source: {n.get('source')}",
-                    f"tier: {n.get('tier')}  (T0=best … T3=low)",
-                    f"id: {n.get('id')}",
-                    f"tags: {', '.join((n.get('tags') or [])[:6]) or '—'}",
-                ],
-                mx,
-                my,
-                W,
-                H,
-                title=(n.get("title") or n.get("id") or "")[:60],
-            )
-        elif state.hover_stage or state.pinned_stage:
-            stg = state.hover_stage or state.pinned_stage or ""
-            flyout(
-                screen,
-                font_sm,
-                font_xs,
-                stage_hover_lines(state, stg),
-                mx,
-                my,
-                W,
-                H,
-                title=f"Stage: {stg} — {STAGE_LABEL.get(stg, '')}",
-                max_line=88,
-                max_width=460,
-            )
-        # Hover status strip → full explanation (flyout stays on-screen)
-        if status_strip.collidepoint(mx, my):
-            flyout(
-                screen,
-                font_sm,
-                font_xs,
-                [
-                    health_why,
-                    f"ok={counts['ok']} run={counts['running']} fail={counts['fail']} pending={counts['pending']}",
-                    "Click × Close or press Q / Esc to quit GodsEye",
-                ],
-                mx,
-                my,
-                W,
-                H,
-                title=f"Status: {health_lab}",
-            )
-        # Hover on-disk size chip → breakdown of graph store
-        elif disk_chip.collidepoint(mx, my):
-            brain_lab = format_bytes(int((state.disk_stats or {}).get("brain_b") or 0))
-            flyout(
-                screen,
-                font_sm,
-                font_xs,
-                state.disk_hover_lines(),
-                mx,
-                my,
-                W,
-                H,
-                title=f"Graph on disk · {format_bytes(g_bytes)} core · {brain_lab} .brain",
-                max_width=480,
-            )
+        # Flyouts (after main UI so they sit on top). Every explanation is clipped inside its card.
+        # Priority: node → stage → disk chip → specific chrome → empty graph area.
+        menus_open = state.show_help or state.show_config or state.show_jobs
+        if not menus_open:
+            if state.hover_node and state.hover_node in state.nodes:
+                n = state.nodes[state.hover_node]
+                flyout(
+                    screen,
+                    font_sm,
+                    font_xs,
+                    [
+                        "IN PLAIN ENGLISH: one knowledge unit (issue, MR, page, file chunk, …).",
+                        f"Type: {n.get('type')}  ·  Source system: {n.get('source')}",
+                        f"Trust tier: {n.get('tier')}  (T0=best / most trusted … T3=lowest)",
+                        f"Id: {n.get('id')}",
+                        f"Tags: {', '.join((n.get('tags') or [])[:8]) or '—'}",
+                        "Click this dot to open the origin trail (how it was born).",
+                        "Hover stays inside this card — text never runs off-screen.",
+                    ],
+                    mx,
+                    my,
+                    W,
+                    H,
+                    title=(n.get("title") or n.get("id") or "Node"),
+                    max_width=440,
+                )
+            elif state.hover_stage or state.pinned_stage:
+                stg = state.hover_stage or state.pinned_stage or ""
+                flyout(
+                    screen,
+                    font_sm,
+                    font_xs,
+                    stage_hover_lines(state, stg),
+                    mx,
+                    my,
+                    W,
+                    H,
+                    title=f"{stg} — {STAGE_LABEL.get(stg, '')}",
+                    max_width=480,
+                    max_height=min(H - 40, int(H * 0.72)),
+                )
+            elif disk_chip.collidepoint(mx, my):
+                brain_lab = format_bytes(int((state.disk_stats or {}).get("brain_b") or 0))
+                flyout(
+                    screen,
+                    font_sm,
+                    font_xs,
+                    state.disk_hover_lines(),
+                    mx,
+                    my,
+                    W,
+                    H,
+                    title=f"Graph on disk · {format_bytes(g_bytes)} core · {brain_lab} whole .brain",
+                    max_width=480,
+                )
+            else:
+                # Specific UI zones first (skip giant graph rect), then graph empty space
+                hit_key = None
+                for rect, key in ui_hover_zones:
+                    if key == "graph":
+                        continue
+                    if rect.collidepoint(mx, my):
+                        hit_key = key
+                        break
+                if hit_key is None and graph_rect.collidepoint(mx, my):
+                    hit_key = "graph"
+                if hit_key:
+                    title, lines = ui_help_lines(hit_key)
+                    # Enrich health with live counts
+                    if hit_key == "health":
+                        lines = [
+                            health_why,
+                            f"Counts now: ok={counts['ok']} running={counts['running']} "
+                            f"fail={counts['fail']} pending={counts['pending']}",
+                            *lines,
+                        ]
+                    flyout(
+                        screen,
+                        font_sm,
+                        font_xs,
+                        lines,
+                        mx,
+                        my,
+                        W,
+                        H,
+                        title=title,
+                        max_width=460,
+                    )
 
         if state.show_help:
             help_overlay(screen, font_title, font_sm, font_xs, W, H)
