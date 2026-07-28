@@ -257,13 +257,13 @@ HELP_LINES = [
     "  Hover a stage for full description + last detail",
     "  Click a stage to pin its flyout",
     "",
-    "KEYS  H help · J jobs menu · 1 graph · 2 pipeline · 3 metrics",
+    "KEYS  H help · J jobs · C config stages · 1 graph · 2 pipeline · 3 metrics",
     "      Space pause/resume live layout · R reshuffle · S reload · Q quit",
     "      drag pan · wheel zoom · × Close · layout is LIVE by default",
     "",
-    "JOBS MENU (press J)",
-    "  1 Rerun concert · 2 Boot only · 3 Doctor · 4 Reindex vectors",
-    "  5 Reload snapshot · 6 Force optimize concert · Esc closes menu",
+    "JOBS MENU (press J) — run concert / doctor / reindex from UI",
+    "CONFIG (press C) — set swarm agent count (16/32/64), optimize, crawl",
+    "  NOTE: swarm = local graph workers, NOT Grok/Codex chat agents",
     "",
     "ORIGIN CRAWL (click a node)",
     "  Builds a trail: parent_id chain + graph edges (HAS_*, CONTAINS, …)",
@@ -353,6 +353,7 @@ class LiveState:
         self.tick = 0
         self.show_help = False
         self.show_jobs = False
+        self.show_config = False
         self.job_busy = False
         self.job_id: str | None = None
         self.job_status: str = "idle"  # idle | running | ok | fail
@@ -363,6 +364,13 @@ class LiveState:
         self.hover_node: str | None = None
         self.hover_stage: str | None = None
         self.hover_job: str | None = None
+        self.hover_config: str | None = None
+        # Stage config (swarm agents etc.) — loaded from disk
+        self.stage_config: dict[str, Any] = {
+            "swarm_agents": 16,
+            "always_optimize": False,
+            "allow_crawl": True,
+        }
         # Snapshot capacity bookkeeping (full vs held for viz)
         self.snapshot_node_total = 0
         self.snapshot_edge_total = 0
@@ -1152,7 +1160,8 @@ def _stage_config_lines(state: "AppState", stg: str) -> list[str]:
     lines: list[str] = []
     if stg == "swarm":
         raw = (env.get("PB_SWARM_AGENTS") or "16").strip()
-        lines.append(f"config: PB_SWARM_AGENTS={raw} (default 16, max 64, 0=off)")
+        lines.append(f"config: PB_SWARM_AGENTS={raw} (GodsEye Config sets this; max 64, 0=off)")
+        lines.append("NOTE: local graph workers — NOT Grok/Codex chat agents")
         if blob:
             lines.append(
                 f"last run: n={blob.get('n_agents') or blob.get('expected') or '—'} "
@@ -1263,6 +1272,50 @@ def _scripts_py() -> tuple[Path, str]:
     return scripts, py
 
 
+def stage_config_path() -> Path:
+    return brain_dir() / "state" / "stage_config.json"
+
+
+def load_stage_config_file() -> dict[str, Any]:
+    """GodsEye + orchestrate share this file for stage knobs."""
+    p = stage_config_path()
+    base = {"swarm_agents": 16, "always_optimize": False, "allow_crawl": True}
+    try:
+        if p.is_file():
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                base.update(d)
+    except Exception:
+        pass
+    # Normalize
+    try:
+        base["swarm_agents"] = max(0, min(64, int(base.get("swarm_agents") or 16)))
+    except Exception:
+        base["swarm_agents"] = 16
+    base["always_optimize"] = bool(base.get("always_optimize"))
+    base["allow_crawl"] = bool(base.get("allow_crawl", True))
+    return base
+
+
+def save_stage_config_file(cfg: dict[str, Any]) -> None:
+    p = stage_config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    out = {
+        "swarm_agents": max(0, min(64, int(cfg.get("swarm_agents") or 16))),
+        "always_optimize": bool(cfg.get("always_optimize")),
+        "allow_crawl": bool(cfg.get("allow_crawl", True)),
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "note": "swarm_agents = local graph workers (agent_swarm), NOT Grok/Codex chat agents",
+    }
+    p.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    # Also export for any same-process children
+    os.environ["PB_SWARM_AGENTS"] = str(out["swarm_agents"])
+    if out["always_optimize"]:
+        os.environ["PB_ALWAYS_OPTIMIZE"] = "1"
+    else:
+        os.environ.pop("PB_ALWAYS_OPTIMIZE", None)
+
+
 def run_job_async(state: "LiveState", job_id: str) -> None:
     """Launch an operator job in a background thread (non-blocking UI)."""
     if state.job_busy:
@@ -1282,25 +1335,41 @@ def run_job_async(state: "LiveState", job_id: str) -> None:
     scripts, py = _scripts_py()
     orch = scripts / "orchestrate.py"
     ent = scripts / "enterprise.py"
+    # Prefer GodsEye stage_config for swarm / optimize / crawl
+    cfg = load_stage_config_file()
+    state.stage_config = cfg
+    swarm_n = int(cfg.get("swarm_agents") or 16)
     env = {
         **os.environ,
         "PRIVATE_BRAIN_HOME": str(brain_home()),
         "PYTHONPATH": str(scripts) + os.pathsep + os.environ.get("PYTHONPATH", ""),
         "PB_ENTERPRISE": os.environ.get("PB_ENTERPRISE") or "1",
-        "PB_SWARM_AGENTS": os.environ.get("PB_SWARM_AGENTS") or "16",
+        "PB_SWARM_AGENTS": str(swarm_n),
         "PB_GODSEYE": "1",
         "PB_GODSEYE_BACKEND": "cpu",
     }
+    if cfg.get("always_optimize"):
+        env["PB_ALWAYS_OPTIMIZE"] = "1"
+    allow_crawl = bool(cfg.get("allow_crawl", True))
 
     if job_id == "concert":
-        argv = [py, str(orch), "concert", "--prompt", "GodsEye menu: rerun concert — status of graph, cite nodes", "--json"]
+        argv = [
+            py,
+            str(orch),
+            "concert",
+            "--prompt",
+            f"GodsEye menu: rerun concert (swarm={swarm_n}) — status of graph, cite nodes",
+            "--json",
+        ]
+        if not allow_crawl:
+            argv.insert(-1, "--no-crawl")
     elif job_id == "concert_nocrawl":
         argv = [
             py,
             str(orch),
             "concert",
             "--prompt",
-            "GodsEye menu: concert no-crawl — status of graph, cite nodes",
+            f"GodsEye menu: concert no-crawl (swarm={swarm_n}) — status of graph, cite nodes",
             "--no-crawl",
             "--json",
         ]
@@ -1374,6 +1443,116 @@ def run_job_async(state: "LiveState", job_id: str) -> None:
             state.event_log.appendleft(f"job  fail {job_id}: {e}")
 
     threading.Thread(target=_worker, name=f"pb-job-{job_id}", daemon=True).start()
+
+
+def config_overlay(
+    screen,
+    font,
+    font_sm,
+    font_xs,
+    state: "LiveState",
+    W: int,
+    H: int,
+    config_hitboxes: list,
+) -> None:
+    """Stage config: swarm agent count, always optimize, allow crawl."""
+    config_hitboxes.clear()
+    pad = 14
+    box_w = min(560, W - 40)
+    box_h = 340
+    box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
+    veil = pygame.Surface((W, H), pygame.SRCALPHA)
+    veil.fill((0, 0, 0, 150))
+    screen.blit(veil, (0, 0))
+    rounded_panel(screen, box, PANEL, ACCENT, 12)
+    draw_text(screen, font, "STAGE CONFIG", box.x + pad, box.y + 10, TEXT)
+    draw_text(
+        screen,
+        font_xs,
+        "Swarm = local graph workers (agent_swarm) — NOT Grok/Codex chat agents",
+        box.x + pad,
+        box.y + 34,
+        YELLOW,
+    )
+    draw_text(
+        screen,
+        font_xs,
+        "Saved to .brain/state/stage_config.json · used by Jobs concerts",
+        box.x + pad,
+        box.y + 50,
+        TEXT_MUTED,
+    )
+
+    cfg = state.stage_config or load_stage_config_file()
+    y = box.y + 78
+    draw_text(screen, font_sm, "SWARM AGENTS (per concert)", box.x + pad, y, TEXT_DIM)
+    y += 22
+    # Preset chips
+    presets = [0, 8, 16, 32, 64]
+    x = box.x + pad
+    cur = int(cfg.get("swarm_agents") or 16)
+    for n in presets:
+        lab = "off" if n == 0 else str(n)
+        tw = max(48, font_sm.size(lab)[0] + 20)
+        chip = pygame.Rect(x, y, tw, 28)
+        selected = cur == n
+        pygame.draw.rect(screen, ACCENT if selected else PANEL_2, chip, border_radius=6)
+        pygame.draw.rect(screen, ACCENT if selected else BORDER, chip, 1, border_radius=6)
+        draw_text(
+            screen,
+            font_sm,
+            lab,
+            chip.centerx - font_sm.size(lab)[0] // 2,
+            chip.y + 6,
+            TEXT,
+        )
+        config_hitboxes.append((chip, f"swarm:{n}"))
+        x += tw + 8
+    y += 40
+    draw_text(
+        screen,
+        font_xs,
+        f"Current: {cur}  ·  next concert will call agent_swarm with N workers",
+        box.x + pad,
+        y,
+        TEXT_MUTED,
+    )
+    y += 28
+
+    # Toggles
+    for tid, label, key in (
+        ("opt", "Always run optimize stage (even when SAP_SHIP)", "always_optimize"),
+        ("crawl", "Allow crawl_gap when evidence is thin", "allow_crawl"),
+    ):
+        on = bool(cfg.get(key))
+        row = pygame.Rect(box.x + pad, y, box.w - pad * 2, 30)
+        pygame.draw.rect(screen, PANEL_2 if on else PANEL, row, border_radius=6)
+        pygame.draw.rect(screen, GREEN if on else BORDER, row, 1, border_radius=6)
+        mark = "[ON] " if on else "[off]"
+        draw_text(screen, font_sm, f"{mark}  {label}", row.x + 10, row.y + 7, TEXT)
+        config_hitboxes.append((row, f"toggle:{key}"))
+        y += 38
+
+    y += 8
+    # Actions
+    save_btn = pygame.Rect(box.x + pad, y, 140, 32)
+    run_btn = pygame.Rect(box.x + pad + 152, y, 200, 32)
+    pygame.draw.rect(screen, PANEL_2, save_btn, border_radius=6)
+    pygame.draw.rect(screen, ACCENT, save_btn, 1, border_radius=6)
+    draw_text(screen, font_sm, "Save config", save_btn.x + 24, save_btn.y + 8, TEXT)
+    config_hitboxes.append((save_btn, "action:save"))
+    pygame.draw.rect(screen, ACCENT, run_btn, border_radius=6)
+    draw_text(screen, font_sm, "Save + run concert", run_btn.x + 22, run_btn.y + 8, TEXT)
+    config_hitboxes.append((run_btn, "action:save_run"))
+    y += 42
+    draw_text(
+        screen,
+        font_xs,
+        "C / Esc close · pick swarm size then Save + run concert",
+        box.x + pad,
+        box.bottom - 24,
+        TEXT_MUTED,
+    )
 
 
 def jobs_overlay(
@@ -1504,13 +1683,19 @@ def main() -> int:
 
     close_btn = pygame.Rect(0, 0, 72, 28)  # updated each frame
     jobs_btn = pygame.Rect(0, 0, 72, 28)
+    config_btn = pygame.Rect(0, 0, 72, 28)
     job_hitboxes: list[tuple[pygame.Rect, str]] = []
+    config_hitboxes: list[tuple[pygame.Rect, str]] = []
+    # Load stage config once at start
+    state.stage_config = load_stage_config_file()
+    os.environ.setdefault("PB_SWARM_AGENTS", str(state.stage_config.get("swarm_agents") or 16))
     running = True
     while running:
         TOP, BOT, RIGHT, graph_rect, right_x = layout_rects()
-        # Close + Jobs buttons — top-right
+        # Close + Jobs + Config buttons — top-right
         close_btn = pygame.Rect(W - 84, 10, 72, 28)
         jobs_btn = pygame.Rect(W - 168, 10, 72, 28)
+        config_btn = pygame.Rect(W - 252, 10, 72, 28)
         now = time.time()
         if now - last_poll > 0.4:
             try:
@@ -1538,7 +1723,9 @@ def main() -> int:
                 if event.key == pygame.K_w and (mods & (pygame.KMOD_META | pygame.KMOD_CTRL)) or event.key == pygame.K_q:
                     running = False
                 elif event.key == pygame.K_ESCAPE:
-                    if state.show_jobs:
+                    if state.show_config:
+                        state.show_config = False
+                    elif state.show_jobs:
                         state.show_jobs = False
                     elif state.show_help:
                         state.show_help = False
@@ -1548,10 +1735,18 @@ def main() -> int:
                     state.show_help = not state.show_help
                     if state.show_help:
                         state.show_jobs = False
+                        state.show_config = False
                 elif event.key == pygame.K_j:
                     state.show_jobs = not state.show_jobs
                     if state.show_jobs:
                         state.show_help = False
+                        state.show_config = False
+                elif event.key == pygame.K_c and not (pygame.key.get_mods() & (pygame.KMOD_META | pygame.KMOD_CTRL)):
+                    state.show_config = not state.show_config
+                    if state.show_config:
+                        state.show_help = False
+                        state.show_jobs = False
+                        state.stage_config = load_stage_config_file()
                 elif state.show_jobs and event.unicode in "1234567":
                     # Number keys map to JOB_MENU while menu open
                     for job in JOB_MENU:
@@ -1593,11 +1788,48 @@ def main() -> int:
                     if close_btn.collidepoint(event.pos):
                         running = False
                         break
+                    # Config button
+                    if config_btn.collidepoint(event.pos):
+                        state.show_config = not state.show_config
+                        if state.show_config:
+                            state.show_jobs = False
+                            state.show_help = False
+                            state.stage_config = load_stage_config_file()
+                        break
                     # Jobs button
                     if jobs_btn.collidepoint(event.pos):
                         state.show_jobs = not state.show_jobs
                         if state.show_jobs:
                             state.show_help = False
+                            state.show_config = False
+                        break
+                    # Config panel clicks
+                    if state.show_config:
+                        hit_cfg = None
+                        for rect, cid in config_hitboxes:
+                            if rect.collidepoint(event.pos):
+                                hit_cfg = cid
+                                break
+                        if hit_cfg:
+                            if hit_cfg.startswith("swarm:"):
+                                n = int(hit_cfg.split(":", 1)[1])
+                                state.stage_config["swarm_agents"] = n
+                                state.event_log.appendleft(f"config  swarm_agents={n}")
+                            elif hit_cfg.startswith("toggle:"):
+                                key = hit_cfg.split(":", 1)[1]
+                                state.stage_config[key] = not bool(state.stage_config.get(key))
+                                state.event_log.appendleft(
+                                    f"config  {key}={state.stage_config[key]}"
+                                )
+                            elif hit_cfg == "action:save":
+                                save_stage_config_file(state.stage_config)
+                                state.event_log.appendleft(
+                                    f"config  saved swarm={state.stage_config.get('swarm_agents')}"
+                                )
+                            elif hit_cfg == "action:save_run":
+                                save_stage_config_file(state.stage_config)
+                                state.show_config = False
+                                run_job_async(state, "concert")
                         break
                     # Jobs menu row click
                     if state.show_jobs:
@@ -1765,6 +1997,23 @@ def main() -> int:
             pcol,
         )
         screen.set_clip(prev)
+
+        # Config button
+        cfg_fill = ACCENT if (config_btn.collidepoint(mx, my) or state.show_config) else PANEL_2
+        pygame.draw.rect(screen, cfg_fill, config_btn, border_radius=6)
+        pygame.draw.rect(screen, BORDER, config_btn, 1, border_radius=6)
+        clab = "Config"
+        draw_text(
+            screen,
+            font_sm,
+            clab,
+            config_btn.centerx - font_sm.size(clab)[0] // 2,
+            config_btn.y + 6,
+            TEXT,
+        )
+        # swarm badge under config
+        sn = int((state.stage_config or {}).get("swarm_agents") or 16)
+        draw_text(screen, font_xs, f"×{sn}", config_btn.x + 4, config_btn.bottom + 2, TEXT_MUTED)
 
         # Jobs button (left of Close)
         jobs_fill = ACCENT if (jobs_btn.collidepoint(mx, my) or state.show_jobs) else PANEL_2
@@ -2141,12 +2390,10 @@ def main() -> int:
 
         if state.show_help:
             help_overlay(screen, font_title, font_sm, font_xs, W, H)
+        if state.show_config:
+            config_overlay(screen, font_title, font_sm, font_xs, state, W, H, config_hitboxes)
         if state.show_jobs:
-            # hover job rows for highlight
             state.hover_job = None
-            # jobs_overlay fills job_hitboxes; compute hover after draw needs two-pass —
-            # draw first, then set hover from mouse for next frame is OK; set before draw:
-            # we call overlay which rebuilds hitboxes, then re-check hover
             jobs_overlay(screen, font_title, font_sm, font_xs, state, W, H, job_hitboxes)
             for rect, jid in job_hitboxes:
                 if rect.collidepoint(mx, my):

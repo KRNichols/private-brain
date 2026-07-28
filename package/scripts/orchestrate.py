@@ -81,6 +81,51 @@ RECOVERY_POLICY: dict[str, dict[str, Any]] = {
     "optimize": {"on_fail": "skip", "max_retries": 0, "timeout_sec": 120},
 }
 
+# GodsEye / operator stage config (written by Live Ops Config menu)
+STAGE_CONFIG_NAME = "stage_config.json"
+
+
+def load_stage_config() -> dict[str, Any]:
+    """Load `.brain/state/stage_config.json` if present."""
+    try:
+        p = STATE_DIR / STAGE_CONFIG_NAME
+        if p.is_file():
+            d = read_json(p)
+            if isinstance(d, dict):
+                return d
+    except Exception:
+        pass
+    return {}
+
+
+def resolve_swarm_agents() -> int:
+    """
+    Local graph swarm worker count (NOT Grok/Codex chat agents).
+
+    Priority:
+      1. Explicit env PB_SWARM_AGENTS (including 0 / off)
+      2. GodsEye stage_config.json swarm_agents
+      3. Default 16
+    """
+    if "PB_SWARM_AGENTS" in os.environ and str(os.environ.get("PB_SWARM_AGENTS", "")).strip() != "":
+        raw_sw = str(os.environ.get("PB_SWARM_AGENTS") or "").strip().lower()
+    else:
+        cfg = load_stage_config()
+        if "swarm_agents" in cfg:
+            raw_sw = str(cfg.get("swarm_agents")).strip().lower()
+        else:
+            raw_sw = "16"
+    if raw_sw in ("", "auto", "on", "default"):
+        n = 16
+    elif raw_sw in ("0", "off", "false", "no"):
+        n = 0
+    else:
+        try:
+            n = int(float(raw_sw))
+        except ValueError:
+            n = 16
+    return max(0, min(64, n))
+
 
 def _stage_failed(out: Any) -> bool:
     if out is None:
@@ -1236,20 +1281,11 @@ def dag_concert(prompt: str, allow_crawl: bool = True) -> dict[str, Any]:
 
     boot = run_isolated("boot", stage_boot, agent_id, rid)
 
-    # Shared-topology SWARM: N agents on one graph (no queue).
-    # Product default: 16 agents. Set PB_SWARM_AGENTS=0 to disable; max 64.
+    # Shared-topology SWARM: N local graph workers on one topology (not Grok/Codex chat agents).
+    # Priority: explicit env PB_SWARM_AGENTS → GodsEye stage_config.json → default 16.
+    # Set 0 / off to disable; max 64. Configurable from Live Ops Config menu.
     swarm_result = None
-    raw_sw = (os.environ.get("PB_SWARM_AGENTS") or "16").strip().lower()
-    if raw_sw in ("", "auto", "on", "default"):
-        n_swarm = 16
-    elif raw_sw in ("0", "off", "false", "no"):
-        n_swarm = 0
-    else:
-        try:
-            n_swarm = int(raw_sw)
-        except ValueError:
-            n_swarm = 16
-    n_swarm = max(0, min(64, n_swarm))
+    n_swarm = resolve_swarm_agents()
     os.environ["PB_SWARM_AGENTS"] = str(n_swarm)  # surface for GodsEye config display
     if n_swarm > 0:
         try:
@@ -1521,11 +1557,16 @@ def dag_concert(prompt: str, allow_crawl: bool = True) -> dict[str, Any]:
     # Optimize only on FAIL/weak or force (healthy SAP_SHIP/PASS concerts skip it)
     optimize = None
     band = (rate or {}).get("band") or ""
+    _cfg = load_stage_config()
+    _always_opt = (
+        os.environ.get("PB_ALWAYS_OPTIMIZE") == "1"
+        or bool(_cfg.get("always_optimize"))
+    )
     need_opt = (
         band == "FAIL"
         or ((rate or {}).get("concert_score") or 10) < 6
         or critic.get("verdict") == "FAIL"
-        or os.environ.get("PB_ALWAYS_OPTIMIZE") == "1"
+        or _always_opt
     )
     if need_opt:
         optimize = run_isolated("optimize", stage_optimize, agent_id, rid, False)
