@@ -9,7 +9,7 @@ Mac ≡ Windows. Real results only (cite-or-block). Not agent theater.
 | **Windows** | [PrivateBrain-WINDOWS-READY.zip](https://github.com/KRNichols/private-brain/releases/latest/download/PrivateBrain-WINDOWS-READY.zip) | Unzip → `tools\install\START.ps1` |
 | **Mac** | [PrivateBrain-MAC-READY.zip](https://github.com/KRNichols/private-brain/releases/latest/download/PrivateBrain-MAC-READY.zip) | Unzip → `./tools/install/START.command` |
 
-**Full one-pager:** [`DOWNLOAD.md`](./DOWNLOAD.md) · **Picture:** [`DIAGRAM.md`](./DIAGRAM.md)
+**Full one-pager:** [`DOWNLOAD.md`](./DOWNLOAD.md) · **Picture:** [`DIAGRAM.md`](./DIAGRAM.md) · **Teach GPT 5.6 / Codex the release:** [`ChatGPT56info.md`](./ChatGPT56info.md)
 
 ---
 
