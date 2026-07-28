@@ -119,7 +119,9 @@ if ($Role -eq "watcher" -or $StartWatcherLoop) {
         # Fallback: lightweight inline worker that audits heartbeat + optional scope URL crawl
         $workerPy = Join-Path $BrainRoot "scripts\agent_swarm.py"
     }
+    # Separate stdout/stderr — never redirect both to same file (handoff conflict)
     $outLog = Join-Path $logsDir "$AgentId.out.log"
+    $errLog = Join-Path $logsDir "$AgentId.err.log"
     $argList = @()
     if (Test-Path (Join-Path $BrainRoot "scripts\agent_role_worker.py")) {
         $argList = @(
@@ -140,24 +142,56 @@ if ($Role -eq "watcher" -or $StartWatcherLoop) {
     }
     $p = Start-Process -FilePath $Py -ArgumentList $argList `
         -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput $outLog -RedirectStandardError $outLog
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
     $workerPid = $p.Id
     $regPath = Join-Path $regDir "$AgentId.json"
     try {
         $regObj = Get-Content -Raw $regPath | ConvertFrom-Json
         $regObj | Add-Member -NotePropertyName pid -NotePropertyValue $p.Id -Force
         $regObj | Add-Member -NotePropertyName status -NotePropertyValue "running" -Force
+        $regObj | Add-Member -NotePropertyName prompt_registered -NotePropertyValue $true -Force
+        $regObj | Add-Member -NotePropertyName process_started -NotePropertyValue $true -Force
+        $regObj | Add-Member -NotePropertyName process_running -NotePropertyValue $true -Force
+        $regObj | Add-Member -NotePropertyName process_completed -NotePropertyValue $false -Force
+        $regObj | Add-Member -NotePropertyName process_failed -NotePropertyValue $false -Force
         $regObj | ConvertTo-Json -Depth 6 | Set-Content -Path $regPath -Encoding UTF8
     } catch {}
-    Write-Host "WORKER $AgentId pid=$($p.Id) log=$outLog" -ForegroundColor Green
+    Write-Host "WORKER $AgentId pid=$($p.Id) log=$outLog err=$errLog" -ForegroundColor Green
 }
 
-# stdout machine-readable for orchestrator
+# Machine-readable status — NEVER claim execution success from prompt materialization alone
+$promptRegistered = Test-Path $outPrompt
+$processStarted = $null -ne $workerPid
+$processRunning = $false
+$processCompleted = $false
+$processFailed = $false
+if ($processStarted) {
+    try {
+        $proc = Get-Process -Id $workerPid -ErrorAction SilentlyContinue
+        if ($proc) { $processRunning = $true }
+        else {
+            # exited already — inspect exit if possible
+            $processCompleted = $true
+        }
+    } catch {
+        $processRunning = $false
+    }
+}
+$statusLabel = if ($processRunning) { "running" }
+               elseif ($processStarted -and $processCompleted) { "completed" }
+               elseif ($promptRegistered -and -not $processStarted) { "prompt_only" }
+               else { "spawned" }
+
 [pscustomobject]@{
     agent_id = $AgentId
     role = $Role
     run_id = $RunId
     prompt_path = $outPrompt
     pid = $workerPid
-    status = $(if ($workerPid) { "running" } else { "spawned" })
+    status = $statusLabel
+    prompt_registered = $promptRegistered
+    process_started = $processStarted
+    process_running = $processRunning
+    process_completed = $processCompleted
+    process_failed = $processFailed
 } | ConvertTo-Json -Compress

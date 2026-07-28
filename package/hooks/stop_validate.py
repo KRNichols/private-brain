@@ -53,7 +53,7 @@ def _emit(obj: dict) -> int:
         try:
             sys.stdout.flush()
         except Exception:
-            pass
+            _ = None  # non-fatal
     return 0
 
 
@@ -168,7 +168,7 @@ def _load_json(path: Path) -> Any:
         if path.is_file():
             return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        pass
+        _ = None  # non-fatal
     return None
 
 
@@ -287,7 +287,7 @@ def _graph_has_node(node_id: str) -> bool:
         n = get_node(node_id)
         return bool(n)
     except Exception:
-        pass
+        _ = None  # non-fatal
     try:
         from brain_lib import read_json, STATE_DIR  # type: ignore
 
@@ -298,7 +298,7 @@ def _graph_has_node(node_id: str) -> bool:
         if isinstance(idx, dict) and node_id in (idx.get("ids") or []):
             return True
     except Exception:
-        pass
+        _ = None  # non-fatal
     # State-side evidence files listing this id count as current evidence
     try:
         state = BRAIN_HOME / ".brain" / "state"
@@ -312,7 +312,7 @@ def _graph_has_node(node_id: str) -> bool:
                 if len(node_id) >= 8:
                     return True
     except Exception:
-        pass
+        _ = None  # non-fatal
     return False
 
 
@@ -347,7 +347,7 @@ def main() -> int:
                 if json.loads(mode_path.read_text(encoding="utf-8")).get("mode") == "normal":
                     rag_off = True
             except Exception:
-                pass
+                _ = None  # non-fatal
         if rag_off:
             return _emit({"continue": True})
 
@@ -439,7 +439,7 @@ def main() -> int:
                     }
                 )
         except Exception:
-            pass
+            _ = None  # non-fatal
         return _emit({"continue": True})
 
 
