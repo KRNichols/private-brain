@@ -109,6 +109,59 @@ def sample_nodes_for_viz(raw_nodes: list[dict], max_n: int) -> list[dict]:
     return selected
 
 
+def format_bytes(n: int | float | None) -> str:
+    """Human-readable size: 881 MB, 1.2 GB, …"""
+    try:
+        b = float(n or 0)
+    except (TypeError, ValueError):
+        b = 0.0
+    if b < 0:
+        b = 0.0
+    if b < 1024:
+        return f"{int(b)} B"
+    for unit, div in (("KB", 1024.0), ("MB", 1024.0**2), ("GB", 1024.0**3), ("TB", 1024.0**4)):
+        v = b / div
+        if v < 1024.0 or unit == "TB":
+            if v >= 100:
+                return f"{v:.0f} {unit}"
+            if v >= 10:
+                return f"{v:.1f} {unit}"
+            return f"{v:.2f} {unit}"
+    return f"{int(b)} B"
+
+
+def _du_bytes(path: Path) -> int:
+    """Directory or file size in bytes. Prefer `du` (fast on large trees)."""
+    try:
+        if not path.exists():
+            return 0
+        if path.is_file():
+            return int(path.stat().st_size)
+        out = subprocess.check_output(
+            ["du", "-sk", str(path)],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=12,
+        )
+        kb = int((out.split() or ["0"])[0])
+        return max(0, kb * 1024)
+    except Exception:
+        # Fallback walk (slower)
+        total = 0
+        try:
+            if path.is_file():
+                return int(path.stat().st_size)
+            for root, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        total += (Path(root) / name).stat().st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return total
+
+
 # ── Traffic-light palette (stop lights, not neon HUD) ────────────────────────
 BG = (14, 16, 20)
 PANEL = (22, 24, 30)
@@ -377,6 +430,19 @@ class LiveState:
         self.snapshot_node_total = 0
         self.snapshot_edge_total = 0
         self.viz_capped = False
+        # On-disk graph sizes (bytes) — refreshed on snapshot load + throttle
+        self.disk_stats: dict[str, Any] = {
+            "nodes_b": 0,
+            "edges_b": 0,
+            "graph_b": 0,
+            "index_b": 0,
+            "content_b": 0,
+            "brain_b": 0,
+            "snapshot_b": 0,
+            "graph_total_b": 0,  # nodes + edges + graph (core store)
+            "updated_at": 0.0,
+        }
+        self._disk_refresh_at = 0.0
         # Layout is LIVE by default (continuous motion). Space pauses.
         self.layout_frozen = False
         self.layout_ticks = 0
@@ -507,6 +573,55 @@ class LiveState:
         self.event_log.appendleft(
             f"graph reload  nodes={len(self.nodes)}  edges={len(self.edges)}{cap_note}"
         )
+        # Snapshot changed → remeasure on-disk size (async-friendly throttle reset)
+        self.refresh_disk_stats(force=True)
+
+    def refresh_disk_stats(self, force: bool = False) -> None:
+        """Measure graph store size on disk. Throttled — large trees use `du`."""
+        now = time.time()
+        if not force and (now - self._disk_refresh_at) < 45.0:
+            return
+        self._disk_refresh_at = now
+        root = brain_dir()
+        nodes_b = _du_bytes(root / "nodes")
+        edges_b = _du_bytes(root / "edges")
+        graph_b = _du_bytes(root / "graph")
+        index_b = _du_bytes(root / "index")
+        content_b = _du_bytes(root / "content")
+        snap = root / "graph" / "snapshot.json"
+        snapshot_b = _du_bytes(snap) if snap.exists() else 0
+        # Core graph on disk = node files + edge files + snapshot kit
+        graph_total_b = nodes_b + edges_b + graph_b
+        brain_b = _du_bytes(root)
+        self.disk_stats = {
+            "nodes_b": nodes_b,
+            "edges_b": edges_b,
+            "graph_b": graph_b,
+            "index_b": index_b,
+            "content_b": content_b,
+            "brain_b": brain_b,
+            "snapshot_b": snapshot_b,
+            "graph_total_b": graph_total_b,
+            "updated_at": now,
+        }
+
+    def disk_hover_lines(self) -> list[str]:
+        """Encyclopedia lines for the on-disk size chip."""
+        d = self.disk_stats or {}
+        lines = [
+            f"Core graph:  {format_bytes(d.get('graph_total_b'))}  (nodes + edges + snapshot)",
+            f"  nodes/     {format_bytes(d.get('nodes_b'))}",
+            f"  edges/     {format_bytes(d.get('edges_b'))}",
+            f"  graph/     {format_bytes(d.get('graph_b'))}  (incl. snapshot {format_bytes(d.get('snapshot_b'))})",
+            f"Vectors:     {format_bytes(d.get('index_b'))}  (index/embeddings)",
+            f"Content:     {format_bytes(d.get('content_b'))}  (raw text files)",
+            f"Whole .brain {format_bytes(d.get('brain_b'))}",
+            f"Path: {(brain_dir())}",
+        ]
+        age = time.time() - float(d.get("updated_at") or 0)
+        if age < 1e6:
+            lines.append(f"Measured {int(age)}s ago · refreshes on snapshot reload / ~45s")
+        return lines
 
     def _rebuild_adjacency(self) -> None:
         adj: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
@@ -1804,6 +1919,8 @@ def main() -> int:
                 state.poll_events(events_path)
                 state.reload_metrics(metrics_dir)
                 state.reload_vectors(emb_dir)
+                # Disk size: force on first empty sample, else throttle inside method
+                state.refresh_disk_stats(force=not bool((state.disk_stats or {}).get("updated_at")))
             except Exception:
                 pass
             last_poll = now
@@ -2049,16 +2166,20 @@ def main() -> int:
         # KPIs — start after brand, stop before status strip
         kx = BRAND_W + 16
         kpi_max_x = status_strip.x - 8
+        disk_total = int((state.disk_stats or {}).get("graph_total_b") or 0)
+        disk_lab = format_bytes(disk_total) if disk_total else "—"
         for label, val, col in [
             ("Graph nodes", nodes_n, ACCENT),
             ("Edges", edges_n, CYAN),
             ("Vectors", vec_n, GREEN),
+            ("On disk", disk_lab, YELLOW),
         ]:
-            if kx + 96 > kpi_max_x:
+            col_w = 108 if label != "On disk" else 100
+            if kx + col_w > kpi_max_x:
                 break
             draw_text(screen, font_xs, label, kx, 10, TEXT_MUTED)
             draw_text(screen, font_kpi, str(val), kx, 28, col)
-            kx += 108
+            kx += col_w
 
         # Traffic legend if room
         if kx + 150 < status_strip.x:
@@ -2133,6 +2254,51 @@ def main() -> int:
         # ── GRAPH ────────────────────────────────────────────────
         rounded_panel(screen, graph_rect, PANEL, BORDER if state.focus != 0 else ACCENT, 12)
         draw_text(screen, font_sm, "KNOWLEDGE GRAPH", graph_rect.x + 14, graph_rect.y + 10, TEXT_DIM)
+
+        # ── On-disk size chip (right of title) — nice compact universe meter ──
+        dstat = state.disk_stats or {}
+        g_bytes = int(dstat.get("graph_total_b") or 0)
+        brain_bytes = int(dstat.get("brain_b") or 0)
+        size_main = format_bytes(g_bytes) if g_bytes else "…"
+        # Chip width from text
+        chip_pad_x = 12
+        size_w = font_kpi.size(size_main)[0]
+        sub_txt = "on disk"
+        sub_w = font_xs.size(sub_txt)[0]
+        chip_w = max(96, max(size_w, sub_w) + chip_pad_x * 2 + 18)
+        chip_h = 40
+        disk_chip = pygame.Rect(graph_rect.right - chip_w - 12, graph_rect.y + 8, chip_w, chip_h)
+        chip_hover = disk_chip.collidepoint(mx, my)
+        chip_fill = PANEL_2 if not chip_hover else (34, 38, 50)
+        chip_border = ACCENT if chip_hover else BORDER
+        rounded_panel(screen, disk_chip, chip_fill, chip_border, 8)
+        # soft accent bar on left of chip
+        bar = pygame.Rect(disk_chip.x + 4, disk_chip.y + 6, 3, disk_chip.h - 12)
+        pygame.draw.rect(screen, YELLOW if g_bytes else GRAY, bar, border_radius=2)
+        # sparkline-ish mini proportion of nodes vs edges vs graph kit
+        nb = max(0, int(dstat.get("nodes_b") or 0))
+        eb = max(0, int(dstat.get("edges_b") or 0))
+        gb = max(0, int(dstat.get("graph_b") or 0))
+        parts = [("N", nb, ACCENT), ("E", eb, CYAN), ("S", gb, GREEN)]
+        sum_p = max(1, nb + eb + gb)
+        bx = disk_chip.x + 12
+        by = disk_chip.bottom - 7
+        bw = disk_chip.w - 20
+        for _lab, pb, pcol in parts:
+            seg = max(2, int(bw * (pb / sum_p))) if g_bytes else 0
+            if seg > 0:
+                pygame.draw.rect(screen, pcol, (bx, by, max(1, seg - 1), 3), border_radius=1)
+                bx += seg
+        draw_text(
+            screen,
+            font_kpi,
+            size_main,
+            disk_chip.x + 12,
+            disk_chip.y + 4,
+            TEXT if g_bytes else TEXT_MUTED,
+        )
+        draw_text(screen, font_xs, sub_txt, disk_chip.x + 12, disk_chip.y + 24, TEXT_MUTED)
+
         # Capacity subtitle: how many we hold / draw vs full snapshot
         shown_n = min(len(state.nodes), DRAW_NODES)
         total_n = state.snapshot_node_total or len(state.nodes)
@@ -2144,16 +2310,17 @@ def main() -> int:
             motion = "paused" if state.layout_frozen else "LIVE"
             cap_txt = f"{held_n} nodes · layout {motion} · R re-layout · Space pause · hover for detail"
             cap_col = TEXT_MUTED
+        # Leave room for the disk chip on the right
         draw_text(
             screen,
             font_xs,
-            ellipsize(font_xs, cap_txt, graph_rect.w - 28),
+            ellipsize(font_xs, cap_txt, max(80, graph_rect.w - chip_w - 40)),
             graph_rect.x + 14,
             graph_rect.y + 28,
             cap_col,
         )
 
-        clip = pygame.Rect(graph_rect.x + 4, graph_rect.y + 46, graph_rect.w - 8, graph_rect.h - 54)
+        clip = pygame.Rect(graph_rect.x + 4, graph_rect.y + 52, graph_rect.w - 8, graph_rect.h - 60)
         prev = screen.get_clip()
         screen.set_clip(clip)
 
@@ -2377,7 +2544,8 @@ def main() -> int:
         rounded_panel(screen, vec, PANEL, BORDER, 10)
         draw_text(screen, font_sm, "VECTOR SEARCH INDEX", vec.x + 12, vec.y + 8, TEXT_DIM)
         draw_text(screen, font_kpi, str(vs.get("vectors", 0)), vec.x + 12, vec.y + 28, GREEN)
-        draw_text(screen, font_xs, "embeddings on disk", vec.x + 12, vec.y + 54, TEXT_MUTED)
+        idx_lab = format_bytes(int((state.disk_stats or {}).get("index_b") or 0))
+        draw_text(screen, font_xs, f"index {idx_lab} on disk", vec.x + 12, vec.y + 54, TEXT_MUTED)
         draw_text(screen, font_xs, f"vocab terms {vs.get('vocab_terms', 0)}", vec.x + 140, vec.y + 34, TEXT)
         cov = min(1.0, float(vs.get("vectors") or 0) / max(1, nodes_n)) if nodes_n else 0
         pygame.draw.rect(screen, BORDER_SOFT, (vec.x + 12, vec.y + 72, vec.w - 24, 6), border_radius=3)
@@ -2486,6 +2654,21 @@ def main() -> int:
                 W,
                 H,
                 title=f"Status: {health_lab}",
+            )
+        # Hover on-disk size chip → breakdown of graph store
+        elif disk_chip.collidepoint(mx, my):
+            brain_lab = format_bytes(int((state.disk_stats or {}).get("brain_b") or 0))
+            flyout(
+                screen,
+                font_sm,
+                font_xs,
+                state.disk_hover_lines(),
+                mx,
+                my,
+                W,
+                H,
+                title=f"Graph on disk · {format_bytes(g_bytes)} core · {brain_lab} .brain",
+                max_width=480,
             )
 
         if state.show_help:
