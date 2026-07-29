@@ -206,20 +206,28 @@ RED = (231, 76, 60)         # STOP / fail
 GRAY = (100, 104, 118)      # pending / skip
 CYAN = (80, 190, 210)
 
+# Graph node colors — desaturated / lower chroma so dense islands stay calm.
+# (Traffic-light GREEN/YELLOW/RED above stay bright for status chrome only.)
 TIER_COLOR = {
-    "T0": GREEN,           # highest trust wiki/docs
-    "T1": (52, 152, 219),  # issues / plans
-    "T2": YELLOW,          # projects / MRs
-    "T3": GRAY,            # comments / crumbs
+    "T0": (78, 132, 108),   # soft sage — highest trust
+    "T1": (78, 118, 148),   # slate blue — issues / plans
+    "T2": (148, 132, 82),   # muted gold — projects / MRs
+    "T3": (88, 92, 102),    # soft gray — comments / crumbs
 }
 SOURCE_COLOR = {
-    "gitlab": (230, 126, 34),
-    "jira": (41, 128, 185),
-    "confluence": (52, 152, 219),
-    "codex_session": (155, 89, 182),
-    "metrics": (26, 188, 156),
-    "brain": (142, 68, 173),
+    "gitlab": (138, 108, 78),       # warm clay (was loud orange)
+    "jira": (72, 112, 148),         # steel blue
+    "confluence": (78, 120, 148),   # cool slate
+    "codex_session": (118, 98, 138),  # dusty violet
+    "metrics": (68, 122, 114),      # muted teal
+    "brain": (108, 90, 128),        # soft plum
+    "unknown": (82, 86, 96),
 }
+# Node selection / trail rings — quiet, not neon
+NODE_FOCUS = (96, 160, 128)
+NODE_TRAIL = (80, 130, 108)
+NODE_NEIGH = (150, 138, 78)
+NODE_HOVER = (170, 174, 184)
 STAGE_ORDER = [
     "boot", "swarm", "cost", "security", "retrieve", "crawl_gap",
     "validate", "metrics", "synthesize", "critic", "rate", "optimize", "emit",
@@ -2879,14 +2887,14 @@ def main() -> int:
                 continue
             pair = (s, d) if s < d else (d, s)
             if pair in trail_pairs:
-                pygame.draw.line(screen, GREEN, p1, p2, 2)
+                pygame.draw.line(screen, NODE_TRAIL, p1, p2, 2)
             elif pair in state.lit_edges:
                 inten = max(
                     state.lit_nodes.get(s, 0.4),
                     state.lit_nodes.get(d, 0.4),
                 )
-                glow = tuple(min(255, int(c * (0.4 + 0.6 * inten))) for c in ACCENT)
-                pygame.draw.line(screen, glow, p1, p2, 2)
+                glow = tuple(min(180, int(c * (0.25 + 0.4 * inten) + 20)) for c in ACCENT)
+                pygame.draw.line(screen, glow, p1, p2, 1)
             elif state.trail or state.lit_nodes:
                 # When focused, mute background edges so lineage reads
                 if s in trail_set or d in trail_set or s in neigh_ids or d in neigh_ids:
@@ -2906,7 +2914,10 @@ def main() -> int:
                 continue
             # Fill: prefer source color so islands aren't mono-yellow discs
             if state.color_mode == "source":
-                col = SOURCE_COLOR.get(n.get("source") or "", TIER_COLOR.get(n.get("tier") or "T3", GRAY))
+                col = SOURCE_COLOR.get(
+                    n.get("source") or "",
+                    TIER_COLOR.get(n.get("tier") or "T3", GRAY),
+                )
                 ring = TIER_COLOR.get(n.get("tier") or "T3", BORDER)
             else:
                 col = TIER_COLOR.get(n.get("tier") or "T3", GRAY)
@@ -2922,20 +2933,22 @@ def main() -> int:
             )
             lit = state.lit_nodes.get(nid, 0.0)
             if is_focus:
-                pygame.draw.circle(screen, GREEN, pt, r + 8, 2)
+                pygame.draw.circle(screen, NODE_FOCUS, pt, r + 8, 2)
                 r = max(r, 7)
             elif on_trail:
-                pygame.draw.circle(screen, GREEN, pt, r + 5, 1)
+                pygame.draw.circle(screen, NODE_TRAIL, pt, r + 5, 1)
                 r = max(r, 6)
             elif lit > 0.05:
-                glow = tuple(min(255, int(c * lit + 40)) for c in ACCENT)
-                pygame.draw.circle(screen, glow, pt, r + 4 + int(3 * lit), 1)
+                # Soft pathway glow (toned-down accent)
+                glow = tuple(min(200, int(c * (0.25 + 0.35 * lit) + 30)) for c in ACCENT)
+                pygame.draw.circle(screen, glow, pt, r + 3 + int(2 * lit), 1)
                 r = max(r, 5)
             elif nid in neigh_ids:
-                pygame.draw.circle(screen, YELLOW, pt, r + 4, 1)
+                pygame.draw.circle(screen, NODE_NEIGH, pt, r + 4, 1)
             if nid == state.hover_node or nid == state.selected:
-                pygame.draw.circle(screen, TEXT, pt, r + 5, 1)
-            pygame.draw.circle(screen, ring, pt, r + 2)
+                pygame.draw.circle(screen, NODE_HOVER, pt, r + 5, 1)
+            # Thin muted ring + slightly translucent-looking fill (darker core)
+            pygame.draw.circle(screen, ring, pt, r + 1)
             pygame.draw.circle(screen, col, pt, r)
 
         screen.set_clip(prev)
