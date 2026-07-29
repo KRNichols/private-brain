@@ -1023,11 +1023,12 @@ class LiveState:
 
         n_islands = max(1, len(islands))
         cx, cy = w * 0.5, h * 0.5
-        # Use more of the panel so clusters can sit farther apart
-        R = 0.48 * min(w, h)
+        # Stretch constellation to the panel so universes can sit farther apart
+        R = 0.49 * min(w, h)
         golden = math.pi * (3.0 - math.sqrt(5.0))
-        # Edge-to-edge gap ≈ 2.4× island radius between neighboring universes
-        UNIVERSE_SEP = 2.4
+        # Empty space between universes ≈ 2× island diameter (double-width gutter)
+        # min_d = 2*r + gap, gap = 4*r  →  min_d = 6*r  →  r = min_d/6
+        UNIVERSE_SEP = 4.0  # gap in units of island radius (= one full extra diameter)
 
         # Island centers on concentric rings (1 island = dead center) — radial symmetry
         centers: list[tuple[float, float]] = []
@@ -1035,11 +1036,11 @@ class LiveState:
             centers = [(cx, cy)]
         else:
             remaining = n_islands
-            # Center seed when enough islands so the middle is not a hole
-            if n_islands >= 7:
+            # Prefer pure rings (no center seed) so chord spacing stays even
+            # Only put one in the middle when we would otherwise waste a huge hole
+            if n_islands >= 9:
                 centers.append((cx, cy))
                 remaining -= 1
-            # How many rings will we need? (capacity 6, 12, 18, …)
             rings_needed = 0
             rem = remaining
             while rem > 0:
@@ -1049,16 +1050,15 @@ class LiveState:
             while remaining > 0:
                 ring += 1
                 take = min(remaining, 6 * ring)
-                # Push rings outward — more chord length between neighbors
-                ring_r = R * (0.78 if rings_needed == 1 else (ring / rings_needed) * 0.96)
-                # Equal angles + phase offset so rings don't form a rectangle lattice
+                # Outer rings near the rim — maximizes inter-universe distance
+                ring_r = R * (0.82 if rings_needed == 1 else (ring / rings_needed) * 0.98)
                 phase = (ring * 0.37) + (math.pi / take if ring % 2 == 0 else 0.0)
                 for k in range(take):
                     a = phase + (2.0 * math.pi * k) / take
                     centers.append((cx + ring_r * math.cos(a), cy + ring_r * math.sin(a)))
                 remaining -= take
 
-        # Base island radius from nearest-neighbor spacing + universe gap
+        # Island radius from nearest-neighbor spacing + double-width universe gap
         if n_islands == 1:
             base_island_r = R * 0.90
         else:
@@ -1070,24 +1070,26 @@ class LiveState:
                     d = math.hypot(x1 - x2, y1 - y2)
                     if d < min_d:
                         min_d = d
-            denom = 2.0 + UNIVERSE_SEP
-            base_island_r = max(28.0, (min_d if math.isfinite(min_d) else R) / denom)
-            base_island_r = min(base_island_r, R * 0.30)
+            denom = 2.0 + UNIVERSE_SEP  # SEP=4 → r = min_d/6, gap = (2/3)*min_d
+            base_island_r = max(22.0, (min_d if math.isfinite(min_d) else R) / denom)
+            # Never let islands grow into the gutter (hard ceiling)
+            base_island_r = min(base_island_r, R * 0.22)
 
         for ii, (_label, members) in enumerate(islands):
             if not members:
                 continue
             icx, icy = centers[ii]
             n = len(members)
-            # Density-aware radius: keep ~12–16 world-units between neighbors when possible
-            # (vogel min spacing ≈ island_r * sqrt(π/n))
-            target_spacing = 14.0 if n < 200 else (12.0 if n < 800 else 10.0)
-            dens_r = target_spacing * math.sqrt(max(n, 1) / math.pi) * 1.45
-            island_r = min(max(base_island_r, dens_r * 0.55), base_island_r * 1.35 if n_islands > 1 else dens_r)
+            # Density packing inside the universe only — cannot eat the inter-universe gap
+            target_spacing = 12.0 if n < 200 else (10.0 if n < 800 else 8.0)
+            dens_r = target_spacing * math.sqrt(max(n, 1) / math.pi) * 1.25
             if n_islands == 1:
                 island_r = min(R * 0.92, max(base_island_r, dens_r))
-            # Pack slightly inside rim so islands don't visually kiss
-            pack_r = island_r * 0.82
+            else:
+                # Cap at base so double-width gutters stay empty
+                island_r = min(base_island_r, max(base_island_r * 0.85, dens_r * 0.5))
+            # Pack well inside the rim so rims never touch the empty band
+            pack_r = island_r * 0.72
             for j, nid in enumerate(members):
                 # Fibonacci / Vogel disk — equal-area circular packing with air
                 r = pack_r * math.sqrt((j + 0.5) / max(n, 1))
