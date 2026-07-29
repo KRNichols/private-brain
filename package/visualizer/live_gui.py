@@ -5,10 +5,10 @@ Private Brain LIVE OPS — knowledge graph + concert pipeline dashboard.
 Sideload visualizer (GodsEye). Not a separate product.
 
 Capacity (approx, laptop):
-  Sample hold:  SNAPSHOT_VIZ_MAX = 10k nodes kept after smart sample
-  Draw:         DRAW_NODES / DRAW_EDGES (matched to sample so 10k is visible)
+  Sample hold:  viz_max_nodes (Config / PB_VIZ_MAX_NODES; default 10k smart sample)
+  Draw:         same as hold; edges ~1.2× nodes
   Layout:       force-sim still samples LAYOUT_MAX only (keeps settle cheap)
-  Note:         pure CPU pygame — large draws can lower FPS; layout still samples LAYOUT_MAX
+  Note:         pure CPU pygame — raising the cap can lower FPS
 
   hover   tooltips / flyouts on nodes & stages
   H       help / color legend (traffic lights)
@@ -47,9 +47,10 @@ except ImportError:
 LAYOUT_MAX = 400          # light polish only (circular islands, not a force-box)
 LAYOUT_PAIR_K = 12
 LAYOUT_SETTLE_TICKS = 35  # brief polish; product law is continuous live
-DRAW_NODES = 10000
-DRAW_EDGES = 12000
-SNAPSHOT_VIZ_MAX = 10000
+# Defaults — overridable in Config (viz_max_nodes) or env PB_VIZ_MAX_NODES
+DEFAULT_VIZ_MAX_NODES = 10000
+VIZ_MAX_HARD_CAP = 100000   # absolute ceiling (0 in config = “all”, still hard-capped)
+VIZ_MAX_PRESETS = (2500, 5000, 10000, 20000, 50000, 0)  # 0 = all (up to hard cap)
 
 # Types treated as low-priority "chunk-like" for sampling (prefer non-chunk)
 _CHUNK_TYPES = frozenset({
@@ -77,13 +78,39 @@ def _node_sample_key(n: dict) -> tuple:
     return (is_chunk, tier, str(n.get("id") or ""))
 
 
+def resolve_viz_max_nodes(cfg: dict[str, Any] | None = None) -> int:
+    """How many nodes Live Ops keeps/draws.
+
+    Order: env PB_VIZ_MAX_NODES → stage_config viz_max_nodes → default 10k.
+    0 means “show all” (still clamped to VIZ_MAX_HARD_CAP for safety).
+    """
+    env = (os.environ.get("PB_VIZ_MAX_NODES") or "").strip()
+    if env:
+        try:
+            n = int(env)
+            if n <= 0:
+                return VIZ_MAX_HARD_CAP
+            return max(500, min(VIZ_MAX_HARD_CAP, n))
+        except ValueError:
+            pass
+    raw = DEFAULT_VIZ_MAX_NODES
+    if isinstance(cfg, dict) and "viz_max_nodes" in cfg:
+        try:
+            raw = int(cfg.get("viz_max_nodes"))
+        except (TypeError, ValueError):
+            raw = DEFAULT_VIZ_MAX_NODES
+    if raw <= 0:
+        return VIZ_MAX_HARD_CAP
+    return max(500, min(VIZ_MAX_HARD_CAP, raw))
+
+
 def sample_nodes_for_viz(raw_nodes: list[dict], max_n: int) -> list[dict]:
     """Pick up to max_n nodes: non-chunk + T0–T2 first, diverse sources.
 
     Round-robin across sources so one noisy source cannot dominate.
     Within each source, nodes are ordered by _node_sample_key.
     """
-    if len(raw_nodes) <= max_n:
+    if max_n <= 0 or len(raw_nodes) <= max_n:
         return list(raw_nodes)
     by_source: dict[str, list[dict]] = defaultdict(list)
     for n in raw_nodes:
@@ -348,8 +375,9 @@ UI_HELP: dict[str, dict[str, object]] = {
         "lines": [
             "Set how many local swarm workers run (0 / 8 / 16 / 32 / 64).",
             "Swarm workers = local graph helpers, NOT ChatGPT/Grok chat agents.",
-            "Toggle: always-optimize, allow crawl when evidence is thin.",
-            "Save, or Save + run concert to apply immediately.",
+            "How many graph nodes to show (default 10k sample — raise if you need more dots).",
+            "Toggle: always-optimize, allow crawl, hover flyouts.",
+            "Save reloads the graph sample. Save + run concert also starts a concert.",
             "Saved under .brain/state/stage_config.json",
         ],
     },
@@ -382,9 +410,11 @@ UI_HELP: dict[str, dict[str, object]] = {
     "kpi_nodes": {
         "title": "Graph nodes (count)",
         "lines": [
-            "How many knowledge nodes are in the graph snapshot.",
+            "How many knowledge nodes are in the full graph snapshot (on disk).",
             "A node is one fact unit: issue, MR, page, file chunk, etc.",
-            "If Live Ops caps the draw, the graph may show fewer dots than this number.",
+            "Live Ops may SAMPLE fewer dots for speed (default 10k).",
+            "Change sample: Config → How many graph nodes to show (2.5k…all).",
+            "Or set env PB_VIZ_MAX_NODES before launch.",
         ],
     },
     "kpi_edges": {
@@ -419,6 +449,8 @@ UI_HELP: dict[str, dict[str, object]] = {
             "Drag to pan. Mouse wheel to zoom. R reshuffles islands. Space pauses motion.",
             "All dots and labels stay clipped inside this panel.",
             "Disk size lives in the top-bar On disk KPI (not on this panel).",
+            "Only a sample of nodes is drawn by default (10k) so FPS stays usable.",
+            "Raise the sample in Config → How many graph nodes to show.",
         ],
     },
     "pipeline": {
@@ -614,7 +646,11 @@ class LiveState:
             "always_optimize": False,
             "allow_crawl": True,
             "hover_flyouts": True,
+            "viz_max_nodes": DEFAULT_VIZ_MAX_NODES,
         }
+        # Effective draw caps (updated from config on reload)
+        self.draw_nodes_cap = DEFAULT_VIZ_MAX_NODES
+        self.draw_edges_cap = int(DEFAULT_VIZ_MAX_NODES * 1.2)
         # Snapshot capacity bookkeeping (full vs held for viz)
         self.snapshot_node_total = 0
         self.snapshot_edge_total = 0
@@ -697,6 +733,10 @@ class LiveState:
             f"No failed stages. {c['ok']} of {len(STAGE_ORDER)} stages OK (green). Pipeline ready.",
         )
 
+    def viz_max(self) -> int:
+        """Current node hold/draw budget from config/env."""
+        return resolve_viz_max_nodes(self.stage_config)
+
     def reload_snapshot(self, path: Path, w: int, h: int) -> None:
         if not path.exists():
             return
@@ -710,8 +750,12 @@ class LiveState:
         self.snapshot_node_total = len(raw_nodes)
         self.snapshot_edge_total = len(raw_edges)
 
-        if len(raw_nodes) > SNAPSHOT_VIZ_MAX:
-            picked = sample_nodes_for_viz(raw_nodes, SNAPSHOT_VIZ_MAX)
+        # Configurable sample: default 10k so pure-CPU pygame stays usable on laptops
+        max_n = self.viz_max()
+        self.draw_nodes_cap = max_n
+        self.draw_edges_cap = max(max_n, int(max_n * 1.2))
+        if len(raw_nodes) > max_n:
+            picked = sample_nodes_for_viz(raw_nodes, max_n)
             keep = {n["id"] for n in picked if n.get("id")}
             self.nodes = {n["id"]: n for n in picked if n.get("id")}
             self.edges = [
@@ -1744,6 +1788,7 @@ def load_stage_config_file() -> dict[str, Any]:
         "always_optimize": False,
         "allow_crawl": True,
         "hover_flyouts": True,
+        "viz_max_nodes": DEFAULT_VIZ_MAX_NODES,
     }
     try:
         if p.is_file():
@@ -1761,19 +1806,39 @@ def load_stage_config_file() -> dict[str, Any]:
     base["allow_crawl"] = bool(base.get("allow_crawl", True))
     # Default ON if key missing
     base["hover_flyouts"] = bool(base.get("hover_flyouts", True))
+    try:
+        vm = int(base.get("viz_max_nodes", DEFAULT_VIZ_MAX_NODES))
+        if vm < 0:
+            vm = 0
+        if vm > VIZ_MAX_HARD_CAP:
+            vm = VIZ_MAX_HARD_CAP
+        base["viz_max_nodes"] = vm
+    except (TypeError, ValueError):
+        base["viz_max_nodes"] = DEFAULT_VIZ_MAX_NODES
     return base
 
 
 def save_stage_config_file(cfg: dict[str, Any]) -> None:
     p = stage_config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        vm = int(cfg.get("viz_max_nodes", DEFAULT_VIZ_MAX_NODES))
+        if vm < 0:
+            vm = 0
+        if 0 < vm < 500:
+            vm = 500
+        if vm > VIZ_MAX_HARD_CAP:
+            vm = VIZ_MAX_HARD_CAP
+    except (TypeError, ValueError):
+        vm = DEFAULT_VIZ_MAX_NODES
     out = {
         "swarm_agents": max(0, min(64, int(cfg.get("swarm_agents") or 16))),
         "always_optimize": bool(cfg.get("always_optimize")),
         "allow_crawl": bool(cfg.get("allow_crawl", True)),
         "hover_flyouts": bool(cfg.get("hover_flyouts", True)),
+        "viz_max_nodes": vm,
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "note": "swarm_agents = local graph workers (agent_swarm), NOT Grok/Codex chat agents",
+        "note": "swarm_agents = local graph workers; viz_max_nodes = GodsEye graph sample (0=all up to hard cap)",
     }
     p.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     # Also export for any same-process children
@@ -1944,8 +2009,8 @@ def config_overlay(
     """Stage config: swarm agent count, always optimize, allow crawl — all text clipped."""
     config_hitboxes.clear()
     pad = 14
-    box_w = min(580, W - 40)
-    box_h = min(440, H - 48)
+    box_w = min(600, W - 40)
+    box_h = min(520, H - 40)
     box = pygame.Rect((W - box_w) // 2, (H - box_h) // 2, box_w, box_h)
     veil = pygame.Surface((W, H), pygame.SRCALPHA)
     veil.fill((0, 0, 0, 150))
@@ -2004,6 +2069,53 @@ def config_overlay(
         f"Selected: {cur}  ·  0=skip swarm  ·  16=default  ·  64=max  ·  applies on next concert",
         pygame.Rect(inner.x, y, inner.w, 18),
         TEXT_MUTED,
+    )
+    y += 30
+
+    # Graph sample size (why you only saw 10k)
+    draw_text(screen, font_sm, "HOW MANY GRAPH NODES TO SHOW?", box.x + pad, y, TEXT_DIM)
+    y += 20
+    draw_text_in(
+        screen,
+        font_xs,
+        "Default 10k keeps Live Ops smooth (CPU pygame). Raise if you need denser view — big = slower.",
+        pygame.Rect(inner.x, y, inner.w, 18),
+        TEXT_MUTED,
+    )
+    y += 22
+    viz_cur = int(cfg.get("viz_max_nodes", DEFAULT_VIZ_MAX_NODES) or 0)
+    x = box.x + pad
+    for n in VIZ_MAX_PRESETS:
+        lab = "all" if n == 0 else (f"{n // 1000}k" if n >= 1000 else str(n))
+        tw = max(44, font_sm.size(lab)[0] + 18)
+        if x + tw > box.right - pad:
+            x = box.x + pad
+            y += 34
+        chip = pygame.Rect(x, y, tw, 28)
+        selected = viz_cur == n
+        pygame.draw.rect(screen, ACCENT if selected else PANEL_2, chip, border_radius=6)
+        pygame.draw.rect(screen, ACCENT if selected else BORDER, chip, 1, border_radius=6)
+        draw_text(
+            screen,
+            font_sm,
+            lab,
+            chip.centerx - font_sm.size(lab)[0] // 2,
+            chip.y + 6,
+            TEXT,
+        )
+        config_hitboxes.append((chip, f"vizmax:{n}"))
+        x += tw + 8
+    y += 36
+    effective = resolve_viz_max_nodes(cfg)
+    total_n = int(getattr(state, "snapshot_node_total", 0) or 0)
+    draw_text_in(
+        screen,
+        font_xs,
+        f"Selected: {'all' if viz_cur == 0 else viz_cur}  ·  effective cap now {effective}"
+        + (f"  ·  snapshot has {total_n}" if total_n else "")
+        + "  ·  Save reloads graph",
+        pygame.Rect(inner.x, y, inner.w, 18),
+        YELLOW if effective > 20000 else TEXT_MUTED,
     )
     y += 28
 
@@ -2456,6 +2568,11 @@ def main() -> int:
                                 n = int(hit_cfg.split(":", 1)[1])
                                 state.stage_config["swarm_agents"] = n
                                 state.event_log.appendleft(f"config  swarm_agents={n}")
+                            elif hit_cfg.startswith("vizmax:"):
+                                n = int(hit_cfg.split(":", 1)[1])
+                                state.stage_config["viz_max_nodes"] = n
+                                lab = "all" if n == 0 else str(n)
+                                state.event_log.appendleft(f"config  viz_max_nodes={lab}")
                             elif hit_cfg.startswith("toggle:"):
                                 key = hit_cfg.split(":", 1)[1]
                                 if key == "hover_flyouts":
@@ -2471,14 +2588,24 @@ def main() -> int:
                                 state.flyouts_enabled = bool(
                                     state.stage_config.get("hover_flyouts", True)
                                 )
+                                # Force graph re-sample with new viz_max_nodes
+                                state.snap_mtime = 0
+                                state.pos.clear()
+                                state.vel.clear()
+                                state.home.clear()
                                 state.event_log.appendleft(
-                                    f"config  saved swarm={state.stage_config.get('swarm_agents')}"
+                                    f"config  saved swarm={state.stage_config.get('swarm_agents')} "
+                                    f"viz={state.stage_config.get('viz_max_nodes')}"
                                 )
                             elif hit_cfg == "action:save_run":
                                 save_stage_config_file(state.stage_config)
                                 state.flyouts_enabled = bool(
                                     state.stage_config.get("hover_flyouts", True)
                                 )
+                                state.snap_mtime = 0
+                                state.pos.clear()
+                                state.vel.clear()
+                                state.home.clear()
                                 state.show_config = False
                                 run_job_async(state, "concert")
                         break
@@ -2503,7 +2630,7 @@ def main() -> int:
                     elif graph_rect.collidepoint(event.pos):
                         hit = None
                         best = 14
-                        for nid in list(state.nodes.keys())[:DRAW_NODES]:
+                        for nid in list(state.nodes.keys())[: state.draw_nodes_cap]:
                             if nid not in state.pos:
                                 continue
                             pt = _w2s(state, graph_rect, *state.pos[nid])
@@ -2554,7 +2681,7 @@ def main() -> int:
                 break
         if graph_rect.collidepoint(mx, my) and not state.hover_stage:
             best = 12
-            for nid in list(state.nodes.keys())[:DRAW_NODES]:
+            for nid in list(state.nodes.keys())[: state.draw_nodes_cap]:
                 if nid not in state.pos:
                     continue
                 pt = _w2s(state, graph_rect, *state.pos[nid])
@@ -2704,15 +2831,22 @@ def main() -> int:
 
         # Capacity subtitle: how many we hold / draw vs full snapshot
         # (disk size is top-bar "On disk" KPI only — not duplicated on this panel)
-        shown_n = min(len(state.nodes), DRAW_NODES)
+        shown_n = min(len(state.nodes), state.draw_nodes_cap)
         total_n = state.snapshot_node_total or len(state.nodes)
         held_n = len(state.nodes)
-        if state.viz_capped or held_n > DRAW_NODES or (total_n and held_n < total_n):
-            cap_txt = f"Showing {shown_n} of {total_n} nodes (cap {SNAPSHOT_VIZ_MAX}) · hover any dot for full detail"
+        viz_cap = state.viz_max()
+        if state.viz_capped or held_n > state.draw_nodes_cap or (total_n and held_n < total_n):
+            cap_txt = (
+                f"Showing {shown_n} of {total_n} nodes (cap {viz_cap}) · "
+                f"Config → How many graph nodes · higher = slower"
+            )
             cap_col = YELLOW
         else:
             motion = "PAUSED" if state.layout_frozen else "LIVE (always moving)"
-            cap_txt = f"{held_n} nodes · {motion} · hover anything for plain-English help · R reshuffle · Space pause"
+            cap_txt = (
+                f"{held_n} nodes · {motion} · cap {viz_cap} · "
+                f"Config to change sample size"
+            )
             cap_col = TEXT_MUTED
         draw_text(
             screen,
@@ -2735,7 +2869,7 @@ def main() -> int:
         neigh_ids = {nid for nid, _rel, _d in state.trail_neighbors}
 
         # Edges: soft mesh only when no focus; trail + neuron pathways always bold
-        for e in state.edges[:DRAW_EDGES]:
+        for e in state.edges[: state.draw_edges_cap]:
             s, d = e.get("src"), e.get("dst")
             if s not in state.pos or d not in state.pos:
                 continue
@@ -2764,7 +2898,7 @@ def main() -> int:
         if state.lit_nodes and state.tick % 3 == 0:
             state.decay_pathway(0.04)
 
-        for nid, n in list(state.nodes.items())[:DRAW_NODES]:
+        for nid, n in list(state.nodes.items())[: state.draw_nodes_cap]:
             if nid not in state.pos:
                 continue
             pt = _w2s(state, graph_rect, *state.pos[nid])
