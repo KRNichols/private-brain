@@ -206,28 +206,31 @@ RED = (231, 76, 60)         # STOP / fail
 GRAY = (100, 104, 118)      # pending / skip
 CYAN = (80, 190, 210)
 
-# Graph node colors — desaturated / lower chroma so dense islands stay calm.
+# Graph node colors — muted but *hue-separated* so sources/tiers still read apart.
 # (Traffic-light GREEN/YELLOW/RED above stay bright for status chrome only.)
 TIER_COLOR = {
-    "T0": (78, 132, 108),   # soft sage — highest trust
-    "T1": (78, 118, 148),   # slate blue — issues / plans
-    "T2": (148, 132, 82),   # muted gold — projects / MRs
-    "T3": (88, 92, 102),    # soft gray — comments / crumbs
+    "T0": (92, 158, 124),   # sage (brighter) — highest trust
+    "T1": (86, 132, 176),   # clear blue — issues / plans
+    "T2": (168, 142, 78),   # amber — projects / MRs
+    "T3": (98, 102, 112),   # cool gray — comments / crumbs
 }
 SOURCE_COLOR = {
-    "gitlab": (138, 108, 78),       # warm clay (was loud orange)
-    "jira": (72, 112, 148),         # steel blue
-    "confluence": (78, 120, 148),   # cool slate
-    "codex_session": (118, 98, 138),  # dusty violet
-    "metrics": (68, 122, 114),      # muted teal
-    "brain": (108, 90, 128),        # soft plum
-    "unknown": (82, 86, 96),
+    "gitlab": (168, 118, 72),        # clay / copper (distinct warm)
+    "jira": (64, 118, 168),          # steel blue
+    "confluence": (58, 138, 148),    # teal-cyan (not same as jira)
+    "codex_session": (138, 96, 158), # violet
+    "metrics": (58, 142, 118),       # sea green
+    "brain": (128, 92, 148),         # plum
+    "github": (120, 128, 140),       # cool silver
+    "unknown": (92, 96, 108),
 }
-# Node selection / trail rings — quiet, not neon
-NODE_FOCUS = (96, 160, 128)
-NODE_TRAIL = (80, 130, 108)
-NODE_NEIGH = (150, 138, 78)
-NODE_HOVER = (170, 174, 184)
+# Dark outline under dots → separation on dark BG without neon fills
+NODE_OUTLINE = (18, 20, 26)
+# Node selection / trail rings — quiet but legible
+NODE_FOCUS = (110, 170, 140)
+NODE_TRAIL = (88, 140, 118)
+NODE_NEIGH = (168, 152, 88)
+NODE_HOVER = (188, 192, 200)
 STAGE_ORDER = [
     "boot", "swarm", "cost", "security", "retrieve", "crawl_gap",
     "validate", "metrics", "synthesize", "critic", "rate", "optimize", "emit",
@@ -998,9 +1001,9 @@ class LiveState:
             src = str(n.get("source") or "unknown")
             by_src[src].append(nid)
 
-        # Build island list: split any source with many nodes into chunks
+        # Build island list: split large sources so dots aren't a solid carpet
         islands: list[tuple[str, list[str]]] = []
-        MAX_PER_ISLAND = 420
+        MAX_PER_ISLAND = 280  # smaller islands → more air between clusters
         for src, members in sorted(by_src.items()):
             members = list(members)
             # stable order: tier then id
@@ -1020,12 +1023,11 @@ class LiveState:
 
         n_islands = max(1, len(islands))
         cx, cy = w * 0.5, h * 0.5
-        # Usable radius: spread islands wider so each "universe" has room to breathe
-        R = 0.46 * min(w, h)
+        # Use more of the panel so clusters can sit farther apart
+        R = 0.48 * min(w, h)
         golden = math.pi * (3.0 - math.sqrt(5.0))
-        # Personal space: exclusive zone ≈ 2× island disk → centers ≥ 4× island_r apart
-        # (edge-to-edge gap ≈ 2× island diameter = "double universe" separation)
-        UNIVERSE_SEP = 2.0  # gap between rims in units of island radius
+        # Edge-to-edge gap ≈ 2.4× island radius between neighboring universes
+        UNIVERSE_SEP = 2.4
 
         # Island centers on concentric rings (1 island = dead center) — radial symmetry
         centers: list[tuple[float, float]] = []
@@ -1047,8 +1049,8 @@ class LiveState:
             while remaining > 0:
                 ring += 1
                 take = min(remaining, 6 * ring)
-                # Push rings outward — more angular chord length between neighbors
-                ring_r = R * (0.72 if rings_needed == 1 else (ring / rings_needed) * 0.94)
+                # Push rings outward — more chord length between neighbors
+                ring_r = R * (0.78 if rings_needed == 1 else (ring / rings_needed) * 0.96)
                 # Equal angles + phase offset so rings don't form a rectangle lattice
                 phase = (ring * 0.37) + (math.pi / take if ring % 2 == 0 else 0.0)
                 for k in range(take):
@@ -1056,9 +1058,9 @@ class LiveState:
                     centers.append((cx + ring_r * math.cos(a), cy + ring_r * math.sin(a)))
                 remaining -= take
 
-        # Island disk radius from nearest-neighbor spacing + double-universe gap
+        # Base island radius from nearest-neighbor spacing + universe gap
         if n_islands == 1:
-            island_r = R * 0.88
+            base_island_r = R * 0.90
         else:
             min_d = float("inf")
             for i in range(len(centers)):
@@ -1068,24 +1070,31 @@ class LiveState:
                     d = math.hypot(x1 - x2, y1 - y2)
                     if d < min_d:
                         min_d = d
-            # min_d = 2*island_r + UNIVERSE_SEP*island_r  →  island_r = min_d / (2 + SEP)
-            # SEP=2 → island_r = min_d/4  (gap = 2*island_r = one full extra "universe")
             denom = 2.0 + UNIVERSE_SEP
-            island_r = max(22.0, (min_d if math.isfinite(min_d) else R) / denom)
-            island_r = min(island_r, R * 0.32)
+            base_island_r = max(28.0, (min_d if math.isfinite(min_d) else R) / denom)
+            base_island_r = min(base_island_r, R * 0.30)
 
         for ii, (_label, members) in enumerate(islands):
             if not members:
                 continue
             icx, icy = centers[ii]
             n = len(members)
+            # Density-aware radius: keep ~12–16 world-units between neighbors when possible
+            # (vogel min spacing ≈ island_r * sqrt(π/n))
+            target_spacing = 14.0 if n < 200 else (12.0 if n < 800 else 10.0)
+            dens_r = target_spacing * math.sqrt(max(n, 1) / math.pi) * 1.45
+            island_r = min(max(base_island_r, dens_r * 0.55), base_island_r * 1.35 if n_islands > 1 else dens_r)
+            if n_islands == 1:
+                island_r = min(R * 0.92, max(base_island_r, dens_r))
+            # Pack slightly inside rim so islands don't visually kiss
+            pack_r = island_r * 0.82
             for j, nid in enumerate(members):
-                # Fibonacci / Vogel disk — equal-area circular packing
-                r = island_r * math.sqrt((j + 0.5) / max(n, 1))
+                # Fibonacci / Vogel disk — equal-area circular packing with air
+                r = pack_r * math.sqrt((j + 0.5) / max(n, 1))
                 a = j * golden
-                # Tiny tier offset: T0 slightly inward, T3 slightly out
+                # Tier: T0 slightly inward (tighter core), T3 slightly out (rim)
                 tier = str((self.nodes.get(nid) or {}).get("tier") or "T3")
-                r *= 0.88 + 0.04 * _TIER_RANK.get(tier, 3)
+                r *= 0.86 + 0.05 * _TIER_RANK.get(tier, 3)
                 x = icx + r * math.cos(a)
                 y = icy + r * math.sin(a)
                 self.pos[nid] = [x, y]
@@ -1398,7 +1407,7 @@ class LiveState:
         if len(ids) > LAYOUT_MAX:
             ids = random.sample(ids, LAYOUT_MAX)
 
-        # Short-range repulsion only (de-overlap inside islands)
+        # Short-range repulsion — keep dots from stacking (larger bubble than before)
         for i, a in enumerate(ids):
             for b in ids[i + 1 : i + 1 + LAYOUT_PAIR_K]:
                 if a not in self.pos or b not in self.pos:
@@ -1410,9 +1419,9 @@ class LiveState:
                 dx, dy = ax - bx, ay - by
                 dist2 = dx * dx + dy * dy + 0.01
                 dist = math.sqrt(dist2)
-                if dist > 48:  # only separate near-overlaps
+                if dist > 64:  # wider personal space
                     continue
-                force = min(12.0, 800.0 / dist2)
+                force = min(14.0, 1100.0 / dist2)
                 ux, uy = dx / dist, dy / dist
                 self.vel[a][0] += force * ux
                 self.vel[a][1] += force * uy
@@ -1423,11 +1432,11 @@ class LiveState:
         for nid in ids:
             if nid not in self.vel or nid not in self.pos:
                 continue
-            # Soft spring back to circular home (prevents rectangular drift)
+            # Soft spring back to circular home (holds constellation shape)
             hx, hy = self.home.get(nid) or [cx, cy]
             px, py = self.pos[nid]
-            self.vel[nid][0] += (hx - px) * 0.04
-            self.vel[nid][1] += (hy - py) * 0.04
+            self.vel[nid][0] += (hx - px) * 0.035
+            self.vel[nid][1] += (hy - py) * 0.035
             # Soft radial bound — circular, not axis-aligned box walls
             dx, dy = px - cx, py - cy
             dist = math.hypot(dx, dy)
@@ -1435,8 +1444,8 @@ class LiveState:
                 pull = (dist - bound_r) * 0.06
                 self.vel[nid][0] -= (dx / dist) * pull
                 self.vel[nid][1] -= (dy / dist) * pull
-            vx = self.vel[nid][0] * 0.72
-            vy = self.vel[nid][1] * 0.72
+            vx = self.vel[nid][0] * 0.70
+            vy = self.vel[nid][1] * 0.70
             self.vel[nid][0] = max(-6.0, min(6.0, vx))
             self.vel[nid][1] = max(-6.0, min(6.0, vy))
             self.pos[nid][0] += self.vel[nid][0]
@@ -2926,7 +2935,11 @@ def main() -> int:
             chunky = n.get("type") in (
                 "Comment", "MRComment", "SessionTurn", "BrainChunk", "Pipeline", "SwarmCrumb",
             )
-            r = 3 if dense and chunky else (4 if dense else (4 if chunky else 6))
+            tier = str(n.get("tier") or "T3")
+            # Size by tier + density: T0 larger (reads first), T3 smaller
+            base_r = 3 if dense and chunky else (4 if dense else (4 if chunky else 5))
+            r = base_r + {0: 2, 1: 1, 2: 0, 3: -1}.get(_TIER_RANK.get(tier, 3), 0)
+            r = max(2, r)
             on_trail = nid in trail_set
             is_focus = nid == state.selected or (
                 state.trail and 0 <= state.trail_focus < len(state.trail) and nid == state.trail[state.trail_focus]
@@ -2947,7 +2960,8 @@ def main() -> int:
                 pygame.draw.circle(screen, NODE_NEIGH, pt, r + 4, 1)
             if nid == state.hover_node or nid == state.selected:
                 pygame.draw.circle(screen, NODE_HOVER, pt, r + 5, 1)
-            # Thin muted ring + slightly translucent-looking fill (darker core)
+            # Dark outline → each dot separates from neighbors; then ring + fill
+            pygame.draw.circle(screen, NODE_OUTLINE, pt, r + 2)
             pygame.draw.circle(screen, ring, pt, r + 1)
             pygame.draw.circle(screen, col, pt, r)
 
